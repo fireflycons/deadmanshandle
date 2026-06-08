@@ -1,0 +1,11 @@
+{
+    "owner": "john.doe@example.com",
+    "recipients": [
+        "executor@example.com",
+        "attorney@example.com"
+    ],
+    "resetDays": 30,
+    "warnDays": 7,
+    "timeout": "2024-12-31T23:59:59Z",
+    "apiKey": "change-me-to-secure-random-key"
+}

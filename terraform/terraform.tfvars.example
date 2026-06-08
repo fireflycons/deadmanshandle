@@ -1,0 +1,14 @@
+aws_region    = "us-east-1"
+application_name = "deadmanshandle"
+environment   = "dev"
+config_file_path = "../config.json"
+sender_email  = "your-verified-email@example.com"
+document_bucket_name = "" # Leave empty for auto-generated name
+document_key  = "document.pdf"
+schedule_expression = "cron(0 2 * * ? *)" # 2 AM UTC daily
+
+tags = {
+  Application = "deadmanshandle"
+  Environment = "dev"
+  ManagedBy   = "terraform"
+}

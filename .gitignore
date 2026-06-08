@@ -1,0 +1,38 @@
+# Go
+bin/
+dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Build artifacts
+build/
+*.zip
+
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+config.json
+
+# Logs
+logs/
+*.log

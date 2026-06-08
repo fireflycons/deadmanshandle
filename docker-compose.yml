@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  # LocalStack for local AWS service emulation
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=lambda,apigateway,s3,ssm,ses,events
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "${TMPDIR}:/tmp/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - deadmans-network
+
+  # PostgreSQL for potential future use
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_PASSWORD=devpassword
+      - POSTGRES_DB=deadmanshandle
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - deadmans-network
+
+volumes:
+  postgres_data:
+
+networks:
+  deadmans-network:
+    driver: bridge
