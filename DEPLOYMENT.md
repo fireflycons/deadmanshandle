@@ -66,9 +66,9 @@ Key variables:
 make build
 
 # Or manually:
-mkdir -p bin
-cd cmd/http && GOOS=linux GOARCH=arm64 go build -o ../../bin/http
-cd ../scheduled && GOOS=linux GOARCH=arm64 go build -o ../../bin/scheduled
+mkdir -p bin/http bin/scheduled
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
 ```
 
 ## Deploy Infrastructure

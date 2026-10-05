@@ -2,7 +2,7 @@ resource "aws_lambda_function" "http_handler" {
   filename      = data.archive_file.http_lambda.output_path
   function_name = "${var.application_name}-http"
   role          = aws_iam_role.lambda_role.arn
-  handler       = "main"
+  handler       = "bootstrap"
   runtime       = "provided.al2023"
   timeout       = 30
   memory_size   = 256
@@ -25,7 +25,7 @@ resource "aws_lambda_function" "scheduled_handler" {
   filename      = data.archive_file.scheduled_lambda.output_path
   function_name = "${var.application_name}-scheduled"
   role          = aws_iam_role.lambda_role.arn
-  handler       = "main"
+  handler       = "bootstrap"
   runtime       = "provided.al2023"
   timeout       = 60
   memory_size   = 256
@@ -47,14 +47,18 @@ resource "aws_lambda_function" "scheduled_handler" {
 }
 
 # Archive files for Lambda deployment
+# The provided.al2023 runtime executes a file named "bootstrap", which must
+# carry the executable bit (not preserved when zipping on Windows).
 data "archive_file" "http_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/../bin/http"
-  output_path = "${path.module}/build/http.zip"
+  type             = "zip"
+  source_file      = "${path.module}/../bin/http/bootstrap"
+  output_path      = "${path.module}/build/http.zip"
+  output_file_mode = "0755"
 }
 
 data "archive_file" "scheduled_lambda" {
-  type        = "zip"
-  source_file = "${path.module}/../bin/scheduled"
-  output_path = "${path.module}/build/scheduled.zip"
+  type             = "zip"
+  source_file      = "${path.module}/../bin/scheduled/bootstrap"
+  output_path      = "${path.module}/build/scheduled.zip"
+  output_file_mode = "0755"
 }
