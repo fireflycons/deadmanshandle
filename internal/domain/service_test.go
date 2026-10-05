@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -127,5 +128,32 @@ func TestProcessScheduledEventWarning(t *testing.T) {
 
 	if len(emails) > 0 && emails[0].To != cfg.Owner {
 		t.Errorf("Expected warning email to owner %s, got %s", cfg.Owner, emails[0].To)
+	}
+
+	if len(emails) > 0 && !strings.Contains(emails[0].Body, "trigger in 5 days") {
+		t.Errorf("Expected warning body to state 5 days remaining, got %q", emails[0].Body)
+	}
+}
+
+func TestWarningBody(t *testing.T) {
+	timeout := time.Date(2024, 6, 6, 12, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name      string
+		remaining time.Duration
+		want      string
+	}{
+		{"several days", 5*24*time.Hour + 3*time.Hour, "will trigger in 5 days, on Thursday 6 June 2024 at 12:00 UTC."},
+		{"one day", 30 * time.Hour, "will trigger in 1 day, on"},
+		{"final day", 23 * time.Hour, "will trigger within the next 24 hours, on"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := warningBody(tt.remaining, timeout)
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("Expected body to contain %q, got %q", tt.want, got)
+			}
+		})
 	}
 }

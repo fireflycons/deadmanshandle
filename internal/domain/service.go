@@ -2,6 +2,7 @@ package domain
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -76,17 +77,33 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 	// Check if warning should be sent
 	warningThreshold := cfg.Timeout.AddDate(0, 0, -cfg.WarnDays)
 	if now.After(warningThreshold) && now.Before(cfg.Timeout) {
-		daysUntilTimeout := int(cfg.Timeout.Sub(now).Hours() / 24)
 		emails = append(emails, EmailAction{
 			To:      cfg.Owner,
 			Subject: "Deadman's Handle Check-In Required",
-			Body: "Warning: Your deadman's handle will trigger in " +
-				string(rune(daysUntilTimeout)) + " days. " +
-				"Please check in to reset the timeout.",
+			Body:    warningBody(cfg.Timeout.Sub(now), cfg.Timeout),
 		})
 	}
 
 	return emails, timeoutPassed, nil
+}
+
+// warningBody describes how long the owner has left to check in. The day
+// count is rounded down, so the final day reads "within the next 24 hours"
+// rather than "in 0 days", and the exact deadline removes any ambiguity.
+func warningBody(remaining time.Duration, timeout time.Time) string {
+	var when string
+	switch days := int(remaining.Hours() / 24); days {
+	case 0:
+		when = "within the next 24 hours"
+	case 1:
+		when = "in 1 day"
+	default:
+		when = "in " + strconv.Itoa(days) + " days"
+	}
+
+	return "Warning: Your deadman's handle will trigger " + when +
+		", on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ". " +
+		"Please check in before then to reset the timeout."
 }
 
 // DaysUntilTimeout returns the number of days until timeout
