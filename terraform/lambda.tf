@@ -4,6 +4,7 @@ resource "aws_lambda_function" "http_handler" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
+  architectures = ["arm64"] # must match GOARCH in the Makefile
   timeout       = 30
   memory_size   = 256
 
@@ -27,6 +28,7 @@ resource "aws_lambda_function" "scheduled_handler" {
   role          = aws_iam_role.lambda_role.arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
+  architectures = ["arm64"] # must match GOARCH in the Makefile
   timeout       = 60
   memory_size   = 256
 
