@@ -82,8 +82,14 @@ func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
 
-	if len(emails) == 0 {
-		t.Error("Expected emails to be sent when timeout is passed")
+	if len(emails) != len(cfg.Recipients) {
+		t.Fatalf("Expected %d emails, got %d", len(cfg.Recipients), len(emails))
+	}
+
+	for i, recipient := range cfg.Recipients {
+		if emails[i].To != recipient {
+			t.Errorf("Expected email %d to %s, got %s", i, recipient, emails[i].To)
+		}
 	}
 }
 

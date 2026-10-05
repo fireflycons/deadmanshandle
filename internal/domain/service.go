@@ -56,12 +56,14 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 
 	// Check if timeout has passed
 	if s.now.After(cfg.Timeout) {
-		// Send document to recipients
-		emails = append(emails, EmailAction{
-			To:      cfg.Recipients[0], // Will be sent to all via batch API
-			Subject: "Important Document - Deadman's Handle",
-			Body:    "Please find the important document attached. This has been sent as per the deadman's handle protocol.",
-		})
+		// Send document to each recipient
+		for _, recipient := range cfg.Recipients {
+			emails = append(emails, EmailAction{
+				To:      recipient,
+				Subject: "Important Document - Deadman's Handle",
+				Body:    "Please find the important document attached. This has been sent as per the deadman's handle protocol.",
+			})
+		}
 	}
 
 	// Check if warning should be sent
