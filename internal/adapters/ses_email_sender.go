@@ -27,9 +27,10 @@ func NewSESEmailSender(client *ses.Client, senderEmail string) *SESEmailSender {
 
 // SendEmail sends a single email
 func (s *SESEmailSender) SendEmail(ctx context.Context, to, subject, body string, attachments map[string][]byte) error {
-	message := s.buildMessage(subject, body, attachments)
+	message := s.buildMessage(to, subject, body, attachments)
 
 	_, err := s.client.SendRawEmail(ctx, &ses.SendRawEmailInput{
+		Destinations: []string{to},
 		RawMessage: &types.RawMessage{
 			Data: []byte(message),
 		},
@@ -47,11 +48,12 @@ func (s *SESEmailSender) SendBatchEmail(ctx context.Context, emails []domain.Ema
 	return nil
 }
 
-func (s *SESEmailSender) buildMessage(subject, body string, attachments map[string][]byte) string {
+func (s *SESEmailSender) buildMessage(to, subject, body string, attachments map[string][]byte) string {
 	boundary := "===============boundary==============="
 	var message strings.Builder
 
 	fmt.Fprintf(&message, "From: %s\r\n", s.sender)
+	fmt.Fprintf(&message, "To: %s\r\n", to)
 	fmt.Fprintf(&message, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&message, "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary)
 	fmt.Fprintf(&message, "\r\n--%s\r\n", boundary)
