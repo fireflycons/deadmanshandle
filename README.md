@@ -54,6 +54,16 @@ Configuration is stored in AWS Parameter Store as JSON:
 }
 ```
 
+Once the timeout passes, the scheduled Lambda emails the document to each
+recipient and sends the owner a notice that it has done so. It records progress
+in two extra fields, so the document goes out only once and a failed send is
+retried on the next daily run without re-sending to anyone else:
+
+- `sentTo`: recipients who have already been sent the document
+- `ownerNotified`: whether the owner has been told
+
+A check-in clears both. Leave them out of a config file you upload by hand.
+
 ## Building
 
 ### Prerequisites

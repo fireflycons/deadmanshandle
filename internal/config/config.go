@@ -13,6 +13,11 @@ type Config struct {
 	WarnDays   int       `json:"warnDays"`
 	Timeout    time.Time `json:"timeout"`
 	APIKey     string    `json:"apiKey"`
+
+	// Delivery state, written once the timeout has passed so that later
+	// scheduled runs do not resend. Both are cleared by a check-in.
+	SentTo        []string `json:"sentTo,omitempty"`        // Recipients already sent the document
+	OwnerNotified bool     `json:"ownerNotified,omitempty"` // Owner told that the document was sent
 }
 
 // ParseConfig parses JSON configuration

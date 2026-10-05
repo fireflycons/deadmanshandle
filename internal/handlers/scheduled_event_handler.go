@@ -2,6 +2,9 @@ package handlers
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"slices"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
@@ -54,14 +57,18 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	}
 
 	// Process scheduled event
-	emails, attachDocument, err := h.service.ProcessScheduledEvent(ctx, cfg)
+	emails, err := h.service.ProcessScheduledEvent(ctx, cfg)
 	if err != nil {
 		return err
 	}
 
+	if len(emails) == 0 {
+		return nil
+	}
+
 	// If document needs to be sent, fetch it
 	var attachments map[string][]byte
-	if attachDocument {
+	if slices.ContainsFunc(emails, domain.EmailAction.AttachDocument) {
 		doc, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey)
 		if err != nil {
 			return err
@@ -71,12 +78,62 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		}
 	}
 
-	// Send emails
-	if len(emails) > 0 {
-		if err := h.emailSender.SendBatchEmail(ctx, emails, attachments); err != nil {
-			return err
+	// Send each email individually so that one failure does not stop the
+	// rest, recording each success so later runs only retry the failures.
+	var errs []error
+	changed := false
+	for _, email := range emails {
+		var emailAttachments map[string][]byte
+		if email.AttachDocument() {
+			emailAttachments = attachments
+		}
+
+		if err := h.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, emailAttachments); err != nil {
+			errs = append(errs, fmt.Errorf("sending email to %s: %w", email.To, err))
+			continue
+		}
+
+		if h.service.RecordSent(cfg, email) {
+			changed = true
 		}
 	}
 
-	return nil
+	if changed {
+		if err := h.saveDeliveryState(ctx, cfg); err != nil {
+			errs = append(errs, fmt.Errorf("saving delivery state: %w", err))
+		}
+	}
+
+	// Report any failures so the invocation shows as an error
+	return errors.Join(errs...)
+}
+
+// saveDeliveryState writes the delivery fields of cfg back to the config
+// store. The stored config is re-read first so that a check-in made while
+// emails were being sent is not overwritten with the old timeout.
+func (h *ScheduledEventHandler) saveDeliveryState(ctx context.Context, cfg *config.Config) error {
+	currentData, err := h.configStore.GetConfig(ctx, h.paramName)
+	if err != nil {
+		return err
+	}
+
+	current, err := config.ParseConfig(currentData)
+	if err != nil {
+		return err
+	}
+
+	if !current.Timeout.Equal(cfg.Timeout) {
+		// The owner checked in, which resets the delivery state anyway
+		return nil
+	}
+
+	current.SentTo = cfg.SentTo
+	current.OwnerNotified = cfg.OwnerNotified
+
+	data, err := current.ToJSON()
+	if err != nil {
+		return err
+	}
+
+	return h.configStore.SetConfig(ctx, h.paramName, data)
 }

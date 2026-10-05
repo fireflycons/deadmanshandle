@@ -2,7 +2,9 @@ package domain
 
 import (
 	"context"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -16,11 +18,29 @@ type CheckinResult struct {
 	WarningRequired bool
 }
 
+// EmailKind identifies why an email is being sent
+type EmailKind int
+
+const (
+	// EmailDocument delivers the document to a recipient
+	EmailDocument EmailKind = iota
+	// EmailTriggerNotice tells the owner that the document has been sent
+	EmailTriggerNotice
+	// EmailWarning reminds the owner to check in
+	EmailWarning
+)
+
 // EmailAction represents an email that should be sent
 type EmailAction struct {
+	Kind    EmailKind
 	To      string
 	Subject string
 	Body    string
+}
+
+// AttachDocument reports whether the document should be attached
+func (e EmailAction) AttachDocument() bool {
+	return e.Kind == EmailDocument
 }
 
 // DeadmansHandleService contains the core business logic
@@ -50,26 +70,44 @@ func NewDeadmansHandleServiceWithTime(t time.Time) *DeadmansHandleService {
 func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {
 	newCfg := *cfg
 	newCfg.Timeout = cfg.CalculateNewTimeout(s.now(), cfg.ResetDays)
+	newCfg.SentTo = nil
+	newCfg.OwnerNotified = false
 	return &newCfg, nil
 }
 
 // ProcessScheduledEvent handles the EventBridge scheduled event
-// Returns emails that should be sent, and whether the document must be
-// attached to them. Both are decided from a single reading of the clock so
-// they cannot disagree if the timeout falls between two readings.
-func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config) ([]EmailAction, bool, error) {
+// Returns emails that should be sent. All decisions are made from a single
+// reading of the clock so they cannot disagree if the timeout falls between
+// two readings.
+//
+// Once the timeout has passed, the document is sent only to recipients not
+// yet recorded in cfg.SentTo, and the owner is notified once. Call
+// RecordSent after each successful send so that later runs skip it.
+func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config) ([]EmailAction, error) {
 	var emails []EmailAction
 	now := s.now()
 
 	// Check if timeout has passed
-	timeoutPassed := now.After(cfg.Timeout)
-	if timeoutPassed {
-		// Send document to each recipient
+	if now.After(cfg.Timeout) {
+		// Send document to each recipient that has not yet received it
 		for _, recipient := range cfg.Recipients {
+			if slices.Contains(cfg.SentTo, recipient) {
+				continue
+			}
 			emails = append(emails, EmailAction{
+				Kind:    EmailDocument,
 				To:      recipient,
 				Subject: "Important Document - Deadman's Handle",
 				Body:    "Please find the important document attached. This has been sent as per the deadman's handle protocol.",
+			})
+		}
+
+		if !cfg.OwnerNotified {
+			emails = append(emails, EmailAction{
+				Kind:    EmailTriggerNotice,
+				To:      cfg.Owner,
+				Subject: "Deadman's Handle Triggered",
+				Body:    triggerNoticeBody(cfg.Timeout, cfg.Recipients),
 			})
 		}
 	}
@@ -78,13 +116,45 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 	warningThreshold := cfg.Timeout.AddDate(0, 0, -cfg.WarnDays)
 	if now.After(warningThreshold) && now.Before(cfg.Timeout) {
 		emails = append(emails, EmailAction{
+			Kind:    EmailWarning,
 			To:      cfg.Owner,
 			Subject: "Deadman's Handle Check-In Required",
 			Body:    warningBody(cfg.Timeout.Sub(now), cfg.Timeout),
 		})
 	}
 
-	return emails, timeoutPassed, nil
+	return emails, nil
+}
+
+// RecordSent updates the delivery state in cfg after email was sent
+// successfully. It reports whether cfg changed and needs to be saved.
+func (s *DeadmansHandleService) RecordSent(cfg *config.Config, email EmailAction) bool {
+	switch email.Kind {
+	case EmailDocument:
+		if slices.Contains(cfg.SentTo, email.To) {
+			return false
+		}
+		cfg.SentTo = append(cfg.SentTo, email.To)
+		return true
+	case EmailTriggerNotice:
+		if cfg.OwnerNotified {
+			return false
+		}
+		cfg.OwnerNotified = true
+		return true
+	default:
+		return false
+	}
+}
+
+// triggerNoticeBody tells the owner that the document is being sent, so
+// that a false trigger can be noticed and followed up.
+func triggerNoticeBody(timeout time.Time, recipients []string) string {
+	return "Your deadman's handle check-in deadline of " +
+		timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		" passed without a check-in, so your document is being sent to:\n\n" +
+		"  " + strings.Join(recipients, "\n  ") + "\n\n" +
+		"If this is a mistake, check in to reset the timeout and contact the recipients."
 }
 
 // warningBody describes how long the owner has left to check in. The day

@@ -2,8 +2,6 @@ package ports
 
 import (
 	"context"
-
-	"github.com/fireflycons/deadmanshandle/internal/domain"
 )
 
 // ConfigStore defines the interface for storing and retrieving configuration
@@ -20,7 +18,6 @@ type DocumentStore interface {
 // EmailSender defines the interface for sending emails
 type EmailSender interface {
 	SendEmail(ctx context.Context, to, subject, body string, attachments map[string][]byte) error
-	SendBatchEmail(ctx context.Context, emails []domain.EmailAction, attachments map[string][]byte) error
 }
 
 // APIKeyValidator defines the interface for validating API keys

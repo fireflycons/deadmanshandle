@@ -2,8 +2,6 @@ package mocks
 
 import (
 	"context"
-
-	"github.com/fireflycons/deadmanshandle/internal/domain"
 )
 
 // MockConfigStore is a mock implementation of ConfigStore
@@ -51,28 +49,37 @@ func (m *MockDocumentStore) SetDocument(bucket, key string, data []byte) {
 	m.Documents[bucket][key] = data
 }
 
+// SentEmail records an email passed to MockEmailSender
+type SentEmail struct {
+	To          string
+	Subject     string
+	Body        string
+	Attachments map[string][]byte
+}
+
 // MockEmailSender is a mock implementation of EmailSender
 type MockEmailSender struct {
-	SentEmails []domain.EmailAction
+	SentEmails []SentEmail
+	FailFor    map[string]error // Recipients whose sends fail with the given error
 }
 
 func NewMockEmailSender() *MockEmailSender {
 	return &MockEmailSender{
-		SentEmails: make([]domain.EmailAction, 0),
+		SentEmails: make([]SentEmail, 0),
+		FailFor:    make(map[string]error),
 	}
 }
 
 func (m *MockEmailSender) SendEmail(ctx context.Context, to, subject, body string, attachments map[string][]byte) error {
-	m.SentEmails = append(m.SentEmails, domain.EmailAction{
-		To:      to,
-		Subject: subject,
-		Body:    body,
+	if err := m.FailFor[to]; err != nil {
+		return err
+	}
+	m.SentEmails = append(m.SentEmails, SentEmail{
+		To:          to,
+		Subject:     subject,
+		Body:        body,
+		Attachments: attachments,
 	})
-	return nil
-}
-
-func (m *MockEmailSender) SendBatchEmail(ctx context.Context, emails []domain.EmailAction, attachments map[string][]byte) error {
-	m.SentEmails = append(m.SentEmails, emails...)
 	return nil
 }
 

@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/ses"
 	"github.com/aws/aws-sdk-go-v2/service/ses/types"
-	"github.com/fireflycons/deadmanshandle/internal/domain"
 )
 
 // SESEmailSender implements the EmailSender interface using AWS SES
@@ -36,16 +35,6 @@ func (s *SESEmailSender) SendEmail(ctx context.Context, to, subject, body string
 		},
 	})
 	return err
-}
-
-// SendBatchEmail sends multiple emails
-func (s *SESEmailSender) SendBatchEmail(ctx context.Context, emails []domain.EmailAction, attachments map[string][]byte) error {
-	for _, email := range emails {
-		if err := s.SendEmail(ctx, email.To, email.Subject, email.Body, attachments); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func (s *SESEmailSender) buildMessage(to, subject, body string, attachments map[string][]byte) string {
