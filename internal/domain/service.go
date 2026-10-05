@@ -24,20 +24,23 @@ type EmailAction struct {
 
 // DeadmansHandleService contains the core business logic
 type DeadmansHandleService struct {
-	now time.Time // For testability, allows injection of current time
+	// now is read on every call rather than captured once, because a warm
+	// Lambda container reuses the service across invocations.
+	// For testability, allows injection of a fixed time.
+	now func() time.Time
 }
 
-// NewDeadmansHandleService creates a new service with current time
+// NewDeadmansHandleService creates a new service using the system clock (UTC)
 func NewDeadmansHandleService() *DeadmansHandleService {
 	return &DeadmansHandleService{
-		now: time.Now().UTC(),
+		now: func() time.Time { return time.Now().UTC() },
 	}
 }
 
 // NewDeadmansHandleServiceWithTime creates a new service with a specific time (for testing)
 func NewDeadmansHandleServiceWithTime(t time.Time) *DeadmansHandleService {
 	return &DeadmansHandleService{
-		now: t,
+		now: func() time.Time { return t },
 	}
 }
 
@@ -45,17 +48,21 @@ func NewDeadmansHandleServiceWithTime(t time.Time) *DeadmansHandleService {
 // Returns updated configuration and any warning that should be sent
 func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {
 	newCfg := *cfg
-	newCfg.Timeout = cfg.CalculateNewTimeout(s.now, cfg.ResetDays)
+	newCfg.Timeout = cfg.CalculateNewTimeout(s.now(), cfg.ResetDays)
 	return &newCfg, nil
 }
 
 // ProcessScheduledEvent handles the EventBridge scheduled event
-// Returns emails that should be sent
-func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config) ([]EmailAction, error) {
+// Returns emails that should be sent, and whether the document must be
+// attached to them. Both are decided from a single reading of the clock so
+// they cannot disagree if the timeout falls between two readings.
+func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config) ([]EmailAction, bool, error) {
 	var emails []EmailAction
+	now := s.now()
 
 	// Check if timeout has passed
-	if s.now.After(cfg.Timeout) {
+	timeoutPassed := now.After(cfg.Timeout)
+	if timeoutPassed {
 		// Send document to each recipient
 		for _, recipient := range cfg.Recipients {
 			emails = append(emails, EmailAction{
@@ -68,8 +75,8 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 
 	// Check if warning should be sent
 	warningThreshold := cfg.Timeout.AddDate(0, 0, -cfg.WarnDays)
-	if s.now.After(warningThreshold) && s.now.Before(cfg.Timeout) {
-		daysUntilTimeout := int(cfg.Timeout.Sub(s.now).Hours() / 24)
+	if now.After(warningThreshold) && now.Before(cfg.Timeout) {
+		daysUntilTimeout := int(cfg.Timeout.Sub(now).Hours() / 24)
 		emails = append(emails, EmailAction{
 			To:      cfg.Owner,
 			Subject: "Deadman's Handle Check-In Required",
@@ -79,18 +86,19 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 		})
 	}
 
-	return emails, nil
+	return emails, timeoutPassed, nil
 }
 
 // DaysUntilTimeout returns the number of days until timeout
 func (s *DeadmansHandleService) DaysUntilTimeout(cfg *config.Config) int {
-	if s.now.After(cfg.Timeout) {
+	now := s.now()
+	if now.After(cfg.Timeout) {
 		return 0
 	}
-	return int(cfg.Timeout.Sub(s.now).Hours() / 24)
+	return int(cfg.Timeout.Sub(now).Hours() / 24)
 }
 
 // IsTimeoutPassed checks if the timeout has passed
 func (s *DeadmansHandleService) IsTimeoutPassed(cfg *config.Config) bool {
-	return s.now.After(cfg.Timeout)
+	return s.now().After(cfg.Timeout)
 }

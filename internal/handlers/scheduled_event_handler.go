@@ -54,14 +54,14 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	}
 
 	// Process scheduled event
-	emails, err := h.service.ProcessScheduledEvent(ctx, cfg)
+	emails, attachDocument, err := h.service.ProcessScheduledEvent(ctx, cfg)
 	if err != nil {
 		return err
 	}
 
 	// If document needs to be sent, fetch it
 	var attachments map[string][]byte
-	if h.service.IsTimeoutPassed(cfg) {
+	if attachDocument {
 		doc, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey)
 		if err != nil {
 			return err

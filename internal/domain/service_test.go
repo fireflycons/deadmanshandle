@@ -77,9 +77,13 @@ func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 		APIKey:     "test-key",
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, attachDocument, err := service.ProcessScheduledEvent(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
+	}
+
+	if !attachDocument {
+		t.Error("Expected document to be attached when timeout is passed")
 	}
 
 	if len(emails) != len(cfg.Recipients) {
@@ -107,9 +111,13 @@ func TestProcessScheduledEventWarning(t *testing.T) {
 		APIKey:     "test-key",
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, attachDocument, err := service.ProcessScheduledEvent(t.Context(), cfg)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
+	}
+
+	if attachDocument {
+		t.Error("Expected no document attachment before timeout")
 	}
 
 	// Should send warning email to owner
