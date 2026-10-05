@@ -160,7 +160,13 @@ aws logs tail /aws/apigateway/deadmanshandle --follow
 
 ## Updating the Configuration
 
-To update the configuration after deployment:
+Terraform only uses `config_file_path` to create the parameter. After that, the
+Lambda rewrites the value on every check-in, so Terraform ignores changes to it
+and re-running `terraform apply` will not reset the countdown.
+
+To update the configuration after deployment, write it directly. The `timeout`
+in the file replaces the stored one, so set it to a future date (or check in
+straight afterwards):
 
 ```bash
 # Update config.json
