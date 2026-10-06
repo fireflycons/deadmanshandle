@@ -1,17 +1,19 @@
 # Quick Start Guide
 
-Get up and running with the Deadman's Handle application in 10 minutes.
+Get up and running with the Deadman's Handle application in about 10 minutes.
+SES production access, which real recipients need, is a separate request to
+AWS that can take a day; see step 4.
 
 ## 1. Prerequisites (5 minutes)
 
 Install required tools:
 
 ```bash
-# Install Go 1.21+
+# Install Go 1.26+ (see go.mod)
 brew install go  # macOS
 # or download from https://golang.org/dl/
 
-# Install Terraform 1.0+
+# Install Terraform 1.5+
 brew install terraform  # macOS
 # or download from https://www.terraform.io/downloads.html
 
@@ -37,8 +39,8 @@ go mod download
 make build
 
 # Verify build succeeded
-ls -la bin/
-# Should show: http, scheduled
+ls bin/http bin/scheduled
+# Each should contain: bootstrap
 ```
 
 ## 3. Prepare Configuration (1 minute)
@@ -52,9 +54,12 @@ nano config.json
 ```
 
 Update these fields:
-- `owner`: Your email address
+- `owner`: Your email address (it also receives the alarms)
 - `recipients`: Email addresses to send document to
-- `apiKey`: Generate a random secure key
+- `timeout`: Your first deadline, in the future (RFC 3339, e.g. `2030-01-01T00:00:00Z`)
+- `apiKey`: Generate a random secure key, e.g. `openssl rand -hex 32`
+- `resetDays`, `warnDays`: Days each check-in buys, and how many days before
+  the deadline the warnings start (`warnDays` must be less than `resetDays`)
 
 ## 4. Deploy (2 minutes)
 
@@ -69,7 +74,14 @@ nano terraform.tfvars
 
 Update these fields:
 - `config_file_path`: Path to your config.json
-- `sender_email`: A verified SES email address
+- `sender_email`: The address emails come from. Terraform verifies its domain
+  in SES with DKIM
+- `manage_dkim_dns_records`: `true` if the domain's DNS is in Route 53 in this
+  account (Terraform adds the records), otherwise `false` and add the records
+  from the `ses_dkim_dns_records` output yourself
+
+Request SES production access in the SES console; until then, mail only reaches
+verified addresses.
 
 ```bash
 # Initialize Terraform
@@ -83,11 +95,14 @@ terraform apply
 # - document_bucket_name: S3 bucket for documents
 ```
 
+The owner receives an email asking them to confirm the alarm subscription;
+confirm it so that failures reach you.
+
 ## 5. Test the API (< 1 minute)
 
 ```bash
 # Save these for testing
-API_ENDPOINT="https://your-endpoint.execute-api.region.amazonaws.com/dev"
+API_ENDPOINT="$(terraform output -raw api_endpoint)"
 API_KEY="your-api-key"
 
 # Test check-in
@@ -98,19 +113,28 @@ curl -X POST "${API_ENDPOINT}/checkin" \
 # {
 #   "statusCode": 200,
 #   "message": "Check-in successful",
-#   "newTimeout": "2024-..."
+#   "newTimeout": "<now + resetDays, e.g. 2026-11-05T09:30:00Z>"
 # }
 ```
+
+The API allows about one request a minute; a quick second call gets HTTP 429.
 
 ## What's Next?
 
 ### Upload Your Document
 ```bash
+# From the terraform directory; the key must match document_key (default document.pdf)
 aws s3 cp important-document.pdf \
-  s3://your-bucket-name/document.pdf
+  "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```
 
+The handle cannot send anything until the document is uploaded.
+
 ### Test Scheduled Event (Optional)
+
+This is a real run: it sends the document if the timeout has passed, or a
+warning if it is within `warnDays`.
+
 ```bash
 aws lambda invoke \
   --function-name deadmanshandle-scheduled \
@@ -159,17 +183,17 @@ go test -v ./internal/domain
 - Verify you copied the `apiKey` from your config.json correctly
 - Include the `x-api-key` header in your curl request
 
-### "SES Email Address Not Verified"
-- The sender email must be verified in SES
-- Go to SES console and verify your email address
+### "Email address is not verified" in the scheduled Lambda's logs
+- Check the sender domain is verified: its DKIM records must be in DNS
+- In the SES sandbox, every recipient must be verified too; request production access
 
-### "Failed to retrieve configuration"
-- Check the `config_file_path` in terraform.tfvars
-- Verify Parameter Store has the configuration
+### "Failed to retrieve configuration" or "Failed to parse configuration"
+- The HTTP Lambda's logs give the cause
+- Check the parameter exists and that the config follows the rules in DEPLOYMENT.md
 
-### "Failed to get document"
-- Upload the document: `aws s3 cp document.pdf s3://bucket-name/document.pdf`
-- Verify bucket name and document key match
+### "NoSuchKey" in the scheduled Lambda's logs
+- Upload the document to the bucket from `terraform output document_bucket_name`
+- Verify the object key matches `document_key` (default `document.pdf`)
 
 ## Cleanup
 
@@ -180,50 +204,31 @@ cd terraform
 terraform destroy
 ```
 
-This removes:
-- Lambda functions
-- API Gateway
-- S3 bucket
-- EventBridge rule
-- Parameter Store configuration
-- IAM roles
+This removes everything Terraform created, including the stored config and
+the SES identity. The versioned S3 bucket must be emptied (all object versions)
+first, or `terraform destroy` fails.
 
 ## Architecture Overview
 
 ```
-┌──────────────────┐
-│   Your Emails    │
-└────────┬─────────┘
-         │
-    ┌────┴──────┐
-    │            │
-┌───▼──┐    ┌───▼───────┐
-│ API  │    │ EventBridge
-│Gate  │    │ (Daily)
-└───┬──┘    └───┬────────┘
-    │            │
-    └────┬───────┘
-         │
-    ┌────▼────────────────────┐
-    │  Lambda Functions       │
-    │  (Hexagonal Arch)       │
-    └────┬───────────────────┘
-         │
-    ┌────┴────┬──────────┬─────────┐
-    │          │          │         │
-┌───▼──┐  ┌───▼──┐  ┌───▼──┐  ┌──▼───┐
-│S3 Doc│  │Param │  │  SES │  │  API │
-│Store │  │Store │  │Email │  │ Keys │
-└──────┘  └──────┘  └──────┘  └──────┘
+  Owner ── POST /checkin ──► API Gateway ──► HTTP Lambda ─────────┐
+                                                                  ▼
+                                                   Parameter Store (config,
+                                                   timeout, API key)
+                                                                  ▲
+  EventBridge (daily) ─────────────────────► Scheduled Lambda ────┘
+                                                │            │
+                                     S3 (document)     SES ──► owner / recipients
+
+  CloudWatch alarms ──► SNS ──► owner
 ```
 
 ## Next Steps
 
-1. **Production Setup**: Configure SNS alarms, enhanced monitoring
-2. **Custom Logic**: Extend domain service with additional business rules
-3. **Multiple Documents**: Support different documents per owner
-4. **Web Dashboard**: Add UI for configuration management
-5. **Multi-Region**: Deploy to multiple AWS regions for redundancy
+1. **Custom Logic**: Extend domain service with additional business rules
+2. **Multiple Documents**: Support different documents per owner
+3. **Web Dashboard**: Add UI for configuration management
+4. **Multi-Region**: Deploy to multiple AWS regions for redundancy
 
 ## Support
 
@@ -235,17 +240,9 @@ For issues:
 
 ## Cost Estimation
 
-For typical monthly usage:
-- ~100 check-ins: ~$0.02
-- ~30 scheduled events: ~$0.01
-- API Gateway: ~$0.10
-- SES emails: ~$0.05
-- **Total: ~$0.20/month**
-
-(Costs vary by AWS region and usage)
+Well under $1 a month, mostly the three CloudWatch alarms (about $0.10 each).
+See DEPLOYMENT.md for the breakdown; costs vary by region.
 
 ---
-
-**Time to Production: ~15 minutes** ⚡
 
 You now have a fully functional Deadman's Handle application running on AWS Lambda!
