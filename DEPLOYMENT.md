@@ -40,10 +40,25 @@ Example configuration:
     ],
     "resetDays": 30,
     "warnDays": 7,
-    "timeout": "2024-12-31T23:59:59Z",
+    "timeout": "2030-01-01T00:00:00Z",
     "apiKey": "your-secure-random-api-key"
 }
 ```
+
+Rules, checked by `terraform plan` and again by both Lambdas on every run:
+
+- `owner`, `apiKey` and every entry in `recipients` must be non-empty, and
+  there must be at least one recipient.
+- `resetDays` must be greater than 0, and `warnDays` must be from 0 to
+  `resetDays - 1`.
+- `timeout` must be an RFC 3339 time. Set it to your first deadline; each
+  check-in then moves it to `resetDays` from now. If it is already past when
+  Terraform creates the parameter, the document is sent on the next daily
+  run, so `terraform plan` warns about it.
+
+If the stored config breaks these rules (for example after a `put-parameter`),
+check-ins fail with HTTP 500 and the daily run errors, which raises the
+`scheduled-errors` alarm. Nothing is sent until the config is fixed.
 
 ### 3. Prepare Terraform Variables
 

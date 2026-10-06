@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
@@ -30,7 +31,7 @@ func (s *SSMConfigStore) GetConfig(ctx context.Context, parameterName string) ([
 	}
 
 	if output.Parameter == nil || output.Parameter.Value == nil {
-		return nil, nil
+		return nil, fmt.Errorf("parameter %s has no value", parameterName)
 	}
 
 	return []byte(*output.Parameter.Value), nil

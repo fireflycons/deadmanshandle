@@ -6,6 +6,6 @@
     ],
     "resetDays": 30,
     "warnDays": 7,
-    "timeout": "2024-12-31T23:59:59Z",
+    "timeout": "2030-01-01T00:00:00Z",
     "apiKey": "change-me-to-secure-random-key"
 }

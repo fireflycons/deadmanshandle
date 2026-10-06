@@ -5,7 +5,7 @@
 locals {
   # Read from the seed file on every apply. If the owner changes, update the
   # file as well as the parameter so the subscription follows.
-  owner_email = jsondecode(file(var.config_file_path)).owner
+  owner_email = local.seed_config.owner
 }
 
 resource "aws_sns_topic" "alarms" {
