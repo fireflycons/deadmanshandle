@@ -1,3 +1,18 @@
+# Created here rather than by Lambda on first run, so they get a retention period
+resource "aws_cloudwatch_log_group" "http_handler" {
+  name              = "/aws/lambda/${var.application_name}-http"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
+resource "aws_cloudwatch_log_group" "scheduled_handler" {
+  name              = "/aws/lambda/${var.application_name}-scheduled"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
 resource "aws_lambda_function" "http_handler" {
   filename      = data.archive_file.http_lambda.output_path
   function_name = "${var.application_name}-http"
@@ -9,6 +24,8 @@ resource "aws_lambda_function" "http_handler" {
   memory_size   = 256
 
   source_code_hash = data.archive_file.http_lambda.output_base64sha256
+
+  depends_on = [aws_cloudwatch_log_group.http_handler]
 
   environment {
     variables = {
@@ -33,6 +50,8 @@ resource "aws_lambda_function" "scheduled_handler" {
   memory_size   = 256
 
   source_code_hash = data.archive_file.scheduled_lambda.output_base64sha256
+
+  depends_on = [aws_cloudwatch_log_group.scheduled_handler]
 
   environment {
     variables = {

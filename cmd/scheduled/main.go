@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
@@ -18,6 +19,9 @@ var scheduledHandler *handlers.ScheduledEventHandler
 
 func init() {
 	ctx := context.Background()
+
+	// JSON log lines on stdout, which Lambda sends to CloudWatch Logs
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(ctx)
@@ -55,7 +59,11 @@ func init() {
 
 // HandleScheduledEvent handles EventBridge scheduled events
 func HandleScheduledEvent(ctx context.Context, event interface{}) error {
-	return scheduledHandler.Handle(ctx)
+	err := scheduledHandler.Handle(ctx)
+	if err != nil {
+		slog.Error("Scheduled run failed", "error", err)
+	}
+	return err
 }
 
 func main() {

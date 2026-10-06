@@ -173,6 +173,20 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --follow
 aws logs tail /aws/apigateway/deadmanshandle --follow
 ```
 
+Both Lambdas log JSON lines: each check-in (accepted or rejected, with the
+caller's IP), each email sent, and every failure with its error. The API key
+and the document are never logged. Lambda logs are kept for 14 days and API
+Gateway logs for 7.
+
+Terraform creates the Lambda log groups. If the Lambdas ran before Terraform
+managed them, AWS has already created the groups and `terraform apply` fails
+with `ResourceAlreadyExistsException`. Import them once:
+
+```bash
+terraform import aws_cloudwatch_log_group.http_handler /aws/lambda/deadmanshandle-http
+terraform import aws_cloudwatch_log_group.scheduled_handler /aws/lambda/deadmanshandle-scheduled
+```
+
 ## Updating the Configuration
 
 Terraform only uses `config_file_path` to create the parameter. After that, the

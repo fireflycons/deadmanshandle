@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -63,6 +64,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	}
 
 	if len(emails) == 0 {
+		slog.Info("No emails due", "timeout", cfg.Timeout)
 		return nil
 	}
 
@@ -92,6 +94,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 			errs = append(errs, fmt.Errorf("sending email to %s: %w", email.To, err))
 			continue
 		}
+		slog.Info("Email sent", "to", email.To, "subject", email.Subject, "document", email.AttachDocument())
 
 		if h.service.RecordSent(cfg, email) {
 			changed = true
@@ -124,6 +127,7 @@ func (h *ScheduledEventHandler) saveDeliveryState(ctx context.Context, cfg *conf
 
 	if !current.Timeout.Equal(cfg.Timeout) {
 		// The owner checked in, which resets the delivery state anyway
+		slog.Info("Delivery state not saved: the owner checked in during the run")
 		return nil
 	}
 

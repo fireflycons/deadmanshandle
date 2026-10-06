@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -17,6 +18,9 @@ var httpHandler *handlers.HTTPHandler
 
 func init() {
 	ctx := context.Background()
+
+	// JSON log lines on stdout, which Lambda sends to CloudWatch Logs
+	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, nil)))
 
 	// Load AWS config
 	cfg, err := config.LoadDefaultConfig(ctx)

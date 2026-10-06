@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -42,43 +43,54 @@ type HTTPResponse struct {
 
 // Handle processes HTTP API Gateway requests
 func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	log := slog.With("sourceIp", request.RequestContext.HTTP.SourceIP)
+
 	// Extract and validate API key
 	apiKey := request.Headers["x-api-key"]
 	if apiKey == "" {
+		log.Warn("Check-in rejected: missing API key")
 		return h.response(401, "Missing API key"), nil
 	}
 
 	// Get configuration
 	configData, err := h.configStore.GetConfig(ctx, h.paramName)
 	if err != nil {
+		log.Error("Check-in failed: retrieving configuration", "error", err)
 		return h.response(500, "Failed to retrieve configuration"), nil
 	}
 
 	cfg, err := config.ParseConfig(configData)
 	if err != nil {
+		log.Error("Check-in failed: parsing configuration", "error", err)
 		return h.response(500, "Failed to parse configuration"), nil
 	}
 
 	// Validate API key
 	if !h.keyValidator.ValidateAPIKey(ctx, apiKey, cfg.APIKey) {
+		log.Warn("Check-in rejected: invalid API key")
 		return h.response(401, "Invalid API key"), nil
 	}
 
 	// Process check-in
 	newCfg, err := h.service.CheckIn(cfg)
 	if err != nil {
+		log.Error("Check-in failed: processing check-in", "error", err)
 		return h.response(500, "Failed to process check-in"), nil
 	}
 
 	// Save updated configuration
 	newConfigData, err := newCfg.ToJSON()
 	if err != nil {
+		log.Error("Check-in failed: serializing configuration", "error", err)
 		return h.response(500, "Failed to serialize configuration"), nil
 	}
 
 	if err := h.configStore.SetConfig(ctx, h.paramName, newConfigData); err != nil {
+		log.Error("Check-in failed: saving configuration", "error", err)
 		return h.response(500, "Failed to save configuration"), nil
 	}
+
+	log.Info("Check-in successful", "newTimeout", newCfg.Timeout)
 
 	resp := HTTPResponse{
 		StatusCode: 200,
