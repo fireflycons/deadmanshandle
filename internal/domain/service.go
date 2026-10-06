@@ -69,7 +69,7 @@ func NewDeadmansHandleServiceWithTime(t time.Time) *DeadmansHandleService {
 // Returns updated configuration and any warning that should be sent
 func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {
 	newCfg := *cfg
-	newCfg.Timeout = cfg.CalculateNewTimeout(s.now(), cfg.ResetDays)
+	newCfg.Timeout = s.now().AddDate(0, 0, cfg.ResetDays)
 	newCfg.SentTo = nil
 	newCfg.OwnerNotified = false
 	return &newCfg, nil

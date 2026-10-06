@@ -73,8 +73,3 @@ func (c *Config) Validate() error {
 func (c *Config) ToJSON() ([]byte, error) {
 	return json.Marshal(c)
 }
-
-// CalculateNewTimeout calculates the new timeout based on reset days
-func (c *Config) CalculateNewTimeout(now time.Time, resetDays int) time.Time {
-	return now.AddDate(0, 0, resetDays)
-}
