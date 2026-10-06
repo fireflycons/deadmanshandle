@@ -16,7 +16,7 @@ import (
 const (
 	testParam  = "test-param"
 	testBucket = "test-bucket"
-	testKey    = "document.pdf"
+	testKey    = "docs/document.pdf"
 )
 
 var testNow = time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -72,7 +72,7 @@ func TestScheduledHandlerSendsDocumentOnce(t *testing.T) {
 		t.Fatalf("Expected 2 document emails and 1 owner notice, got %d emails", len(emailSender.SentEmails))
 	}
 	for _, email := range emailSender.SentEmails {
-		attached := email.Attachments["document"] != nil
+		attached := email.Attachments["document.pdf"] != nil
 		if wantAttached := email.To != "owner@example.com"; attached != wantAttached {
 			t.Errorf("Email to %s: expected attachment %v, got %v", email.To, wantAttached, attached)
 		}

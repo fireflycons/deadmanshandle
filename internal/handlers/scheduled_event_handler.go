@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path"
 	"slices"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -75,8 +76,9 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		// Named after the object, e.g. "wills/will.pdf" is attached as "will.pdf"
 		attachments = map[string][]byte{
-			"document": doc,
+			path.Base(h.documentKey): doc,
 		}
 	}
 

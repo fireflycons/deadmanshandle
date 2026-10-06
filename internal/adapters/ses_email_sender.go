@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"mime"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/ses"
@@ -53,13 +55,23 @@ func (s *SESEmailSender) buildMessage(to, subject, body string, attachments map[
 
 	for filename, data := range attachments {
 		fmt.Fprintf(&message, "\r\n--%s\r\n", boundary)
-		fmt.Fprintf(&message, "Content-Type: application/octet-stream; name=\"%s\"\r\n", filename)
+		fmt.Fprintf(&message, "Content-Type: %s\r\n", mime.FormatMediaType(attachmentType(filename), map[string]string{"name": filename}))
 		message.WriteString("Content-Transfer-Encoding: base64\r\n")
-		fmt.Fprintf(&message, "Content-Disposition: attachment; filename=\"%s\"\r\n\r\n", filename)
+		fmt.Fprintf(&message, "Content-Disposition: %s\r\n\r\n", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
 		message.WriteString(base64.StdEncoding.EncodeToString(data))
 		message.WriteString("\r\n")
 	}
 
 	fmt.Fprintf(&message, "\r\n--%s--\r\n", boundary)
 	return message.String()
+}
+
+// attachmentType guesses the MIME type from the file extension, using Go's
+// built-in table plus the system's. Unknown types are sent as
+// application/octet-stream.
+func attachmentType(filename string) string {
+	if t := mime.TypeByExtension(path.Ext(filename)); t != "" {
+		return t
+	}
+	return "application/octet-stream"
 }
