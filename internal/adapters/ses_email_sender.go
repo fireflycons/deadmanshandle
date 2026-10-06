@@ -58,7 +58,13 @@ func (s *SESEmailSender) buildMessage(to, subject, body string, attachments map[
 		fmt.Fprintf(&message, "Content-Type: %s\r\n", mime.FormatMediaType(attachmentType(filename), map[string]string{"name": filename}))
 		message.WriteString("Content-Transfer-Encoding: base64\r\n")
 		fmt.Fprintf(&message, "Content-Disposition: %s\r\n\r\n", mime.FormatMediaType("attachment", map[string]string{"filename": filename}))
-		message.WriteString(base64.StdEncoding.EncodeToString(data))
+		// RFC 2045 limits base64 lines to 76 characters
+		encoded := base64.StdEncoding.EncodeToString(data)
+		for len(encoded) > 76 {
+			message.WriteString(encoded[:76] + "\r\n")
+			encoded = encoded[76:]
+		}
+		message.WriteString(encoded)
 		message.WriteString("\r\n")
 	}
 
