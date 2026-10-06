@@ -41,7 +41,7 @@ type HTTPResponse struct {
 }
 
 // Handle processes HTTP API Gateway requests
-func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	// Extract and validate API key
 	apiKey := request.Headers["x-api-key"]
 	if apiKey == "" {
@@ -87,19 +87,19 @@ func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayProxy
 	}
 
 	respBody, _ := json.Marshal(resp)
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: 200,
 		Body:       string(respBody),
 	}, nil
 }
 
-func (h *HTTPHandler) response(statusCode int, message string) events.APIGatewayProxyResponse {
+func (h *HTTPHandler) response(statusCode int, message string) events.APIGatewayV2HTTPResponse {
 	resp := HTTPResponse{
 		StatusCode: statusCode,
 		Message:    message,
 	}
 	body, _ := json.Marshal(resp)
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: statusCode,
 		Body:       string(body),
 	}

@@ -18,7 +18,7 @@ func TestHTTPHandlerMissingAPIKey(t *testing.T) {
 	validator := mocks.NewMockAPIKeyValidator("test-key")
 	handler := NewHTTPHandler(configStore, service, validator, "test-param")
 
-	request := events.APIGatewayProxyRequest{
+	request := events.APIGatewayV2HTTPRequest{
 		Headers: make(map[string]string),
 	}
 
@@ -49,7 +49,7 @@ func TestHTTPHandlerInvalidAPIKey(t *testing.T) {
 	validator := mocks.NewMockAPIKeyValidator("correct-key")
 	handler := NewHTTPHandler(configStore, service, validator, "test-param")
 
-	request := events.APIGatewayProxyRequest{
+	request := events.APIGatewayV2HTTPRequest{
 		Headers: map[string]string{
 			"x-api-key": "wrong-key",
 		},
@@ -83,7 +83,7 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 	validator := mocks.NewMockAPIKeyValidator("test-key")
 	handler := NewHTTPHandler(configStore, service, validator, "test-param")
 
-	request := events.APIGatewayProxyRequest{
+	request := events.APIGatewayV2HTTPRequest{
 		Headers: map[string]string{
 			"x-api-key": "test-key",
 		},

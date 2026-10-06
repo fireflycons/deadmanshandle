@@ -40,7 +40,7 @@ func init() {
 }
 
 // HandleHTTPRequest handles API Gateway requests
-func HandleHTTPRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func HandleHTTPRequest(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	return httpHandler.Handle(ctx, request)
 }
 
