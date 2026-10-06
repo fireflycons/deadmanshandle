@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"context"
+	"io"
 
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
@@ -29,25 +30,5 @@ func (s *S3DocumentStore) GetDocument(ctx context.Context, bucket, key string) (
 	}
 	defer output.Body.Close()
 
-	// Read the entire object into memory
-	data := make([]byte, 0)
-	if output.ContentLength != nil {
-		data = make([]byte, 0, *output.ContentLength)
-	}
-
-	buf := make([]byte, 1024*1024) // 1MB chunks
-	for {
-		n, err := output.Body.Read(buf)
-		if n > 0 {
-			data = append(data, buf[:n]...)
-		}
-		if err != nil {
-			if err.Error() == "EOF" {
-				break
-			}
-			return nil, err
-		}
-	}
-
-	return data, nil
+	return io.ReadAll(output.Body)
 }
