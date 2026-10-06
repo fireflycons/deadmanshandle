@@ -7,7 +7,7 @@ This guide covers how to develop and extend the Deadman's Handle application.
 ### 1. Install Dependencies
 
 ```bash
-# Go 1.21+
+# Go 1.26+ (see go.mod)
 brew install go
 
 # Git (for version control)
@@ -15,7 +15,12 @@ brew install git
 
 # Optional: Make (for build automation)
 brew install make
+
+# For infrastructure changes: Terraform 1.5+
+brew install terraform
 ```
+
+On Windows, use Git Bash for `make` and the shell commands in this guide.
 
 ### 2. Clone and Setup
 
@@ -25,7 +30,6 @@ cd deadmanshandle
 
 # Download Go dependencies
 go mod download
-go mod tidy
 
 # Verify build
 go build -v ./...
@@ -35,16 +39,23 @@ go build -v ./...
 
 ```
 internal/
-  ├── config/       # Configuration models - START HERE
-  ├── domain/       # Business logic - Main development focus
-  ├── ports/        # Interfaces - Define new capabilities here
-  ├── adapters/     # AWS implementations - Add AWS calls here
-  ├── handlers/     # Lambda entry points
-  └── mocks/        # Test doubles
+  ├── config/       # Config JSON type and its validation
+  ├── domain/       # Business logic and the clock - main development focus
+  ├── ports/        # Interfaces to AWS services (must not import domain)
+  ├── adapters/     # AWS implementations of the ports
+  ├── handlers/     # Lambda entry logic: wires ports and domain together
+  └── mocks/        # Test doubles for the ports
 cmd/
-  ├── http/         # HTTP Lambda entry point
-  └── scheduled/    # Scheduled Lambda entry point
+  ├── http/         # HTTP Lambda main (check-in)
+  └── scheduled/    # Scheduled Lambda main (daily run)
+terraform/          # Infrastructure
 ```
+
+### 4. Conventions
+
+- Text files use LF line endings (enforced by `.gitattributes`).
+- Times are UTC. Emails show deadlines as `Monday 2 January 2006 at 15:04 MST`.
+- Use the standard library plus the AWS SDK only.
 
 ## Development Workflow
 
@@ -53,7 +64,8 @@ cmd/
 1. **Update Config Model** (if needed)
    ```bash
    # Edit internal/config/config.go
-   # Add new fields to Config struct
+   # Add new fields to Config, and rules to Config.Validate
+   # Mirror the rules in the preconditions in terraform/parameter_store.tf
    # Add tests in internal/config/config_test.go
    ```
 
@@ -80,41 +92,40 @@ cmd/
 5. **Add Mock** (for testing)
    ```bash
    # Edit internal/mocks/mocks.go
-   # Add MockNewService implementation
+   # Add MockNewService and its compile-time check:
+   #   _ ports.NewService = (*MockNewService)(nil)
    ```
 
 6. **Update Handler**
    ```bash
    # Edit internal/handlers/http_handler.go or scheduled_event_handler.go
    # Use new service capability
-   # Add tests in handler_test.go
+   # Add tests in http_handler_test.go or scheduled_event_handler_test.go
    ```
 
-7. **Test End-to-End**
+7. **Test**
    ```bash
-   go test -v ./...
+   go build ./... && go vet ./... && go test ./internal/...
    ```
 
 ### Code Style Guide
 
 #### Naming Conventions
 ```go
-// Interfaces: PascalCase, end with -er, -or, -ing
+// Interfaces: MixedCaps, often ending in -er
 type EmailSender interface {}
 type ConfigStore interface {}
 
-// Structs: PascalCase
+// Exported types and functions: MixedCaps
 type Config struct {}
 type HTTPHandler struct {}
+func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {}
 
-// Methods: PascalCase
-func (s *Service) CheckIn(cfg *Config) error {}
+// Unexported: mixedCaps
+func warningBody(remaining time.Duration, timeout time.Time) string {}
 
-// Private functions: camelCase
-func (s *Service) validateConfig(cfg *Config) error {}
-
-// Constants: UPPER_SNAKE_CASE
-const DEFAULT_TIMEOUT_DAYS = 30
+// Constants: MixedCaps too, not UPPER_SNAKE_CASE
+const defaultResetDays = 30
 ```
 
 #### Documentation
@@ -132,30 +143,41 @@ type Config struct {
 
 // Method comment
 // CheckIn processes an owner check-in and returns the updated configuration
-func (s *Service) CheckIn(cfg *Config) (*Config, error) {
+func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {
     // ...
 }
 ```
 
 #### Error Handling
 ```go
-// Return errors, don't ignore them
-if err := s.emailSender.SendEmail(ctx, to, subject, body, attachments); err != nil {
-    return fmt.Errorf("failed to send email: %w", err)
+// Return errors with context, don't ignore them
+if err := h.emailSender.SendEmail(ctx, to, subject, body, attachments); err != nil {
+    return fmt.Errorf("sending email to %s: %w", to, err)
 }
 
-// Provide context in errors
-if !s.keyValidator.ValidateAPIKey(ctx, key, expected) {
-    return fmt.Errorf("invalid API key: key does not match expected value")
-}
+// Where one failure should not stop the rest (as when sending to each
+// recipient), collect errors and return errors.Join(errs...)
 ```
+
+#### Logging
+Both Lambdas log JSON lines with `log/slog` (set up in `cmd/*/main.go`), which
+Lambda sends to CloudWatch Logs. Log events and errors with key/value
+attributes:
+
+```go
+slog.Info("Email sent", "to", email.To, "subject", email.Subject)
+slog.Error("Check-in failed: saving configuration", "error", err)
+```
+
+Never log the config as a whole: it contains the API key. Never log the
+document.
 
 ### Testing Guidelines
 
 #### Unit Tests
 - Located in `*_test.go` files alongside code
 - Use table-driven tests for multiple scenarios
-- Always use mock implementations from `internal/mocks/`
+- Use the mocks in `internal/mocks/` for the ports; use the real domain service
 - Inject time for deterministic testing
 
 ```go
@@ -164,10 +186,10 @@ func TestCheckIn(t *testing.T) {
     now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
     service := domain.NewDeadmansHandleServiceWithTime(now)
     cfg := createTestConfig()
-    
+
     // Execute
     result, err := service.CheckIn(cfg)
-    
+
     // Verify
     if err != nil {
         t.Fatalf("CheckIn failed: %v", err)
@@ -181,9 +203,9 @@ func TestCheckIn(t *testing.T) {
 #### Test Naming
 ```go
 // Format: Test<FunctionName><Scenario>
-func TestCheckInWithValidConfig(t *testing.T) {}
-func TestCheckInWithExpiredTimeout(t *testing.T) {}
-func TestProcessScheduledEventSendsWarning(t *testing.T) {}
+func TestCheckInClearsDeliveryState(t *testing.T) {}
+func TestProcessScheduledEventWarning(t *testing.T) {}
+func TestScheduledHandlerRetriesOnlyFailedRecipients(t *testing.T) {}
 ```
 
 #### Mock Usage
@@ -192,11 +214,16 @@ func TestProcessScheduledEventSendsWarning(t *testing.T) {}
 configStore := mocks.NewMockConfigStore()
 emailSender := mocks.NewMockEmailSender()
 
-// Set mock data
-configStore.Data["param"] = []byte(`{"owner":"test@example.com"}`)
+// Store a valid config (ParseConfig rejects an invalid one)
+cfgData, _ := cfg.ToJSON()
+configStore.Data["test-param"] = cfgData
+
+// Simulate failures
+configStore.SetErr = errors.New("ssm down")
+emailSender.FailFor["recipient@example.com"] = errors.New("rejected")
 
 // Execute code
-handler.Handle(ctx, request)
+handler.Handle(ctx)
 
 // Verify mock calls
 if len(emailSender.SentEmails) == 0 {
@@ -218,39 +245,27 @@ go test -v ./internal/domain
 
 # Specific test
 go test -run TestCheckIn ./internal/domain
-
-# Watch mode (requires entr)
-ls internal/**/*.go | entr go test -v ./...
 ```
 
 ### Building
 
 ```bash
-# Local build
-go build ./cmd/http
-go build ./cmd/scheduled
+# Check everything compiles (the binaries only run inside Lambda)
+go build ./...
 
-# Linux ARM64 (Lambda)
+# Lambda binaries: linux/arm64, named bootstrap
+make build
+
+# Equivalent to:
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
-
-# Using Makefile
-make build
 ```
 
 ### Debugging
 
-#### Enable Verbose Logging
-```bash
-# Export debug environment variable
-export DEBUG=1
-export DEBUG_LEVEL=2
-
-# Add debug output in code
-if os.Getenv("DEBUG") != "" {
-    log.Printf("Debug: processing config: %+v\n", cfg)
-}
-```
+There is no local Lambda environment: `cmd/*/main.go` only runs inside Lambda.
+Exercise the handlers through their tests, with mocks for AWS, and use the
+CloudWatch logs of the deployed functions.
 
 #### Using Go Debugger (Delve)
 
@@ -260,22 +275,16 @@ go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Debug a test
 dlv test ./internal/domain -- -test.run TestCheckIn
-
-# Debug main application
-dlv debug ./cmd/http
 ```
 
 #### CloudWatch Logs
 
 ```bash
-# View HTTP handler logs
+# Follow the HTTP handler's logs
 aws logs tail /aws/lambda/deadmanshandle-http --follow
 
-# View specific time range
-aws logs filter-log-events \
-  --log-group-name /aws/lambda/deadmanshandle-http \
-  --start-time 1000 \
-  --end-time 2000
+# The scheduled handler's logs for the last day
+aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
 ```
 
 ## Extending the Application
@@ -296,7 +305,7 @@ aws logs filter-log-events \
    type AWSNewServiceAdapter struct {
        client *service.Client
    }
-   
+
    func (a *AWSNewServiceAdapter) DoSomething(ctx context.Context, ...) error {
        // AWS SDK call
    }
@@ -308,19 +317,25 @@ aws logs filter-log-events \
    type MockNewService struct {
        // state for testing
    }
-   
+
    func (m *MockNewService) DoSomething(ctx context.Context, ...) error {
        // mock implementation
    }
    ```
 
-4. **Integrate with Domain**
+4. **Inject into the Handler**
+
+   The domain stays free of ports: it makes decisions, and the handlers carry
+   them out through the ports.
    ```go
-   // internal/domain/service.go
-   type DeadmansHandleService struct {
+   // internal/handlers/scheduled_event_handler.go
+   type ScheduledEventHandler struct {
+       // ... existing fields
        newService ports.NewService
    }
    ```
+   Create the adapter in `cmd/*/main.go`, and grant the Lambda's IAM role the
+   permissions it needs in `terraform/iam.tf`.
 
 ### Adding a New Handler
 
@@ -332,7 +347,7 @@ aws logs filter-log-events \
 2. **Define handler struct**
    ```go
    type NewHandler struct {
-       // dependencies via interfaces
+       // ports as interfaces, the domain service directly
        configStore ports.ConfigStore
        service     *domain.DeadmansHandleService
    }
@@ -350,6 +365,9 @@ aws logs filter-log-events \
    touch cmd/new_handler/main.go
    ```
 
+5. **Build and deploy it**: add it to the `build` target in the Makefile, and
+   add the function, its archive and its log group in `terraform/lambda.tf`.
+
 ### Modifying Configuration
 
 1. **Update Config struct**
@@ -360,39 +378,19 @@ aws logs filter-log-events \
    }
    ```
 
-2. **Create migration guide** (in docs)
+2. **Validate it** in `Config.Validate`, and with a matching precondition in
+   `terraform/parameter_store.tf`
 3. **Add tests** for new field
-4. **Update documentation** in README.md
+4. **Update documentation** in README.md and DEPLOYMENT.md. Deployed configs
+   are updated with `aws ssm put-parameter` (see DEPLOYMENT.md), since
+   Terraform only seeds the parameter.
 
-## Performance Optimization
+## Performance
 
-### Cold Start Optimization
-```go
-// Reuse clients at module level
-var ssmClient *ssm.Client
-
-func init() {
-    // Initialize once
-    cfg, _ := config.LoadDefaultConfig(context.Background())
-    ssmClient = ssm.NewFromConfig(cfg)
-}
-```
-
-### Memory Optimization
-- Lambda memory directly affects CPU allocation and cost
-- Typical needs: 256MB (minimal), 512MB (recommended)
-- Monitor CloudWatch metrics for actual usage
-
-### Connection Pooling
-```go
-// Reuse HTTP clients and AWS service clients
-var sesClient *ses.Client
-
-func init() {
-    cfg, _ := config.LoadDefaultConfig(context.Background())
-    sesClient = ses.NewFromConfig(cfg)
-}
-```
+AWS clients are created once in `init()` in `cmd/*/main.go` and reused on warm
+starts. Anything that must be current on each invocation (such as the clock)
+is read per call instead. Both functions run with 256 MB; the work is a few
+AWS calls a day, so there is little to tune.
 
 ## Security Best Practices
 
@@ -407,16 +405,9 @@ if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 ```
 
 ### Input Validation
-```go
-// Validate all inputs
-if cfg.Owner == "" {
-    return fmt.Errorf("owner email required")
-}
-
-if len(cfg.Recipients) == 0 {
-    return fmt.Errorf("at least one recipient required")
-}
-```
+All config rules live in `Config.Validate` (called by `ParseConfig`), so both
+Lambdas reject an invalid config. Add new rules there rather than at the point
+of use.
 
 ### Error Messages
 ```go
@@ -426,57 +417,26 @@ return fmt.Errorf("authentication failed")  // ✓ Good
 return fmt.Errorf("invalid key: expected %s, got %s", expected, provided)  // ✗ Bad
 ```
 
-## Deployment from Development
+The check-in API returns short, generic messages; the details go to the logs.
 
-### Manual Deployment
+## Deploying Changes
+
+Deploy with Terraform, which zips the binaries from `bin/` during `plan` and
+`apply` and updates a function when its code changes:
 
 ```bash
-# Build
 make build
-
-# Deploy specific handler
-aws lambda update-function-code \
-  --function-name deadmanshandle-http \
-  --zip-file fileb://terraform/build/http.zip
-
-# Test the deployment
-aws lambda invoke \
-  --function-name deadmanshandle-http \
-  --payload '{"body":"test"}' \
-  response.json
+cd terraform
+terraform apply
 ```
 
-### Blue-Green Deployment
-
-```bash
-# Create new version
-aws lambda publish-version \
-  --function-name deadmanshandle-http
-
-# Update alias
-aws lambda update-alias \
-  --function-name deadmanshandle-http \
-  --name prod \
-  --function-version <new-version>
-```
+Don't upload code with `aws lambda update-function-code`: the zips in
+`terraform/build/` are only refreshed by Terraform, so they may be stale.
 
 ## Troubleshooting Development
 
-### Tests Fail on Timeout
-```go
-// Increase timeout for CI environments
-if os.Getenv("CI") != "" {
-    timeout = 10 * time.Second
-} else {
-    timeout = 5 * time.Second
-}
-```
-
-### Import Issues
+### Module Issues
 ```bash
-# Update dependencies
-go get -u
-
 # Clean cache
 go clean -modcache
 
@@ -487,25 +447,19 @@ go mod verify
 go mod tidy
 ```
 
-### Lambda Execution Fails Locally
-- Use LocalStack for local AWS emulation
-- Or use AWS SAM: `sam local start-api`
-- Check CloudWatch logs on real AWS deployment
-
 ## Code Review Checklist
 
 Before submitting a pull request:
 
-- [ ] All tests pass: `go test -v ./...`
-- [ ] Code formatted: `go fmt ./...`
-- [ ] Linting: `golangci-lint run ./...`
-- [ ] No unused imports: `go mod tidy`
-- [ ] Documentation updated: README.md, code comments
+- [ ] All tests pass: `go test ./...`
+- [ ] Code formatted: `gofmt -l .` prints nothing
+- [ ] Vet passes: `go vet ./...`
+- [ ] Modules tidy: `go mod tidy` makes no changes
+- [ ] Documentation updated: README.md, DEPLOYMENT.md, code comments
 - [ ] Tests added for new functionality
-- [ ] Security review: no hardcoded secrets
-- [ ] Performance considered: memory, cold starts
+- [ ] Security review: no hardcoded secrets, nothing sensitive logged
 - [ ] Error handling: all errors handled
-- [ ] Terraform changes valid: `terraform fmt`, `terraform validate`
+- [ ] Terraform changes valid: `terraform fmt -check`, `terraform validate`
 
 ## Useful Commands
 
@@ -513,26 +467,21 @@ Before submitting a pull request:
 # Format code
 go fmt ./...
 
-# Lint code (install golangci-lint first)
-golangci-lint run ./...
-
-# Generate mocks (if using mockgen)
-go generate ./...
-
 # Build docs
 go doc -all ./internal/domain
 
-# List test coverage by file
+# Coverage by line, in a browser
+go test -coverprofile=coverage.out ./...
 go tool cover -html=coverage.out
 
 # Profile memory usage
-go test -memprofile=mem.prof ./...
+go test -memprofile=mem.prof ./internal/domain
 go tool pprof mem.prof
 ```
 
 ## Resources
 
-- [Go Documentation](https://golang.org/doc/)
+- [Go Documentation](https://go.dev/doc/)
 - [AWS SDK for Go v2](https://aws.github.io/aws-sdk-go-v2/)
 - [Hexagonal Architecture](https://en.wikipedia.org/wiki/Hexagonal_architecture)
 - [AWS Lambda Best Practices](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
