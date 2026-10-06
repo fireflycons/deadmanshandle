@@ -55,8 +55,6 @@ deadmanshandle/
 ├── go.mod                        # Go module definition
 ├── go.sum                        # Go dependencies checksums
 ├── Makefile                      # Build automation
-├── Dockerfile                    # Container image definition
-├── docker-compose.yml            # Local development environment
 ├── .gitignore                    # Git ignore rules
 │
 ├── README.md                     # Project documentation
@@ -243,10 +241,9 @@ make clean      # Removes artifacts
 
 ### External Tools
 - Go 1.21+
-- Terraform 1.0+
+- Terraform 1.5+
 - AWS CLI
 - Make (optional)
-- Docker (optional, for local development)
 
 ## Security Considerations
 

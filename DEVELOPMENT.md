@@ -15,9 +15,6 @@ brew install git
 
 # Optional: Make (for build automation)
 brew install make
-
-# Optional: Docker (for local testing)
-brew install docker
 ```
 
 ### 2. Clone and Setup
