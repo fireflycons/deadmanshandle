@@ -16,7 +16,9 @@ var (
 
 // MockConfigStore is a mock implementation of ConfigStore
 type MockConfigStore struct {
-	Data map[string][]byte
+	Data   map[string][]byte
+	GetErr error // Returned by GetConfig when set
+	SetErr error // Returned by SetConfig when set
 }
 
 func NewMockConfigStore() *MockConfigStore {
@@ -26,10 +28,16 @@ func NewMockConfigStore() *MockConfigStore {
 }
 
 func (m *MockConfigStore) GetConfig(ctx context.Context, parameterName string) ([]byte, error) {
+	if m.GetErr != nil {
+		return nil, m.GetErr
+	}
 	return m.Data[parameterName], nil
 }
 
 func (m *MockConfigStore) SetConfig(ctx context.Context, parameterName string, data []byte) error {
+	if m.SetErr != nil {
+		return m.SetErr
+	}
 	m.Data[parameterName] = data
 	return nil
 }
@@ -93,17 +101,15 @@ func (m *MockEmailSender) SendEmail(ctx context.Context, to, subject, body strin
 	return nil
 }
 
-// MockAPIKeyValidator is a mock implementation of APIKeyValidator
-type MockAPIKeyValidator struct {
-	ExpectedKey string
-}
+// MockAPIKeyValidator is a mock implementation of APIKeyValidator. It
+// compares against the key the caller passes, so tests catch a handler that
+// checks against the wrong key.
+type MockAPIKeyValidator struct{}
 
-func NewMockAPIKeyValidator(expectedKey string) *MockAPIKeyValidator {
-	return &MockAPIKeyValidator{
-		ExpectedKey: expectedKey,
-	}
+func NewMockAPIKeyValidator() *MockAPIKeyValidator {
+	return &MockAPIKeyValidator{}
 }
 
 func (m *MockAPIKeyValidator) ValidateAPIKey(ctx context.Context, providedKey string, expectedKey string) bool {
-	return providedKey == m.ExpectedKey
+	return providedKey == expectedKey
 }
