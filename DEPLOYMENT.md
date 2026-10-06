@@ -172,7 +172,8 @@ Expected response:
 ### 2. Upload Document to S3
 
 The key must match `document_key` (default `document.pdf`). Recipients receive
-the attachment under the key's file name.
+the attachment under the key's file name. Until the document is uploaded, each
+daily run emails the owner that it is missing.
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
@@ -326,7 +327,8 @@ AWS sends. If you change the owner, update `config_file_path` as well as the
 parameter, then run `terraform apply` so the subscription follows.
 
 - `deadmanshandle-scheduled-errors`: the daily run returned an error. This
-  includes failing to send to any recipient.
+  includes failing to send to any recipient, and the document being missing
+  after the timeout.
 - `deadmanshandle-scheduled-not-run`: the daily run was not invoked in the last
   24 hours. This alarm fires once after the first deploy, until the first
   scheduled run happens.

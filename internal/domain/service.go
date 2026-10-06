@@ -28,7 +28,19 @@ const (
 	EmailTriggerNotice
 	// EmailWarning reminds the owner to check in
 	EmailWarning
+	// EmailDocumentMissing warns the owner, before the timeout, that the
+	// document is missing and could not be sent
+	EmailDocumentMissing
+	// EmailDeliveryBlocked tells the owner that the timeout has passed but
+	// the document is missing, so nothing was sent to the recipients
+	EmailDeliveryBlocked
 )
+
+// Document describes the document to be sent, as found by the scheduled run
+type Document struct {
+	Location  string // Where the owner should upload it, e.g. s3://bucket/key
+	Available bool
+}
 
 // EmailAction represents an email that should be sent
 type EmailAction struct {
@@ -83,33 +95,58 @@ func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, err
 // Once the timeout has passed, the document is sent only to recipients not
 // yet recorded in cfg.SentTo, and the owner is notified once. Call
 // RecordSent after each successful send so that later runs skip it.
-func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config) ([]EmailAction, error) {
+//
+// If the document is missing, the owner is warned instead: daily before the
+// timeout, and with an EmailDeliveryBlocked notice on each run after it while
+// recipients are still waiting.
+func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config, doc Document) ([]EmailAction, error) {
 	var emails []EmailAction
 	now := s.now()
 
 	// Check if timeout has passed
 	if now.After(cfg.Timeout) {
-		// Send document to each recipient that has not yet received it
+		var pending []string
 		for _, recipient := range cfg.Recipients {
-			if slices.Contains(cfg.SentTo, recipient) {
-				continue
+			if !slices.Contains(cfg.SentTo, recipient) {
+				pending = append(pending, recipient)
 			}
-			emails = append(emails, EmailAction{
-				Kind:    EmailDocument,
-				To:      recipient,
-				Subject: "Important Document - Deadman's Handle",
-				Body:    "Please find the important document attached. This has been sent as per the deadman's handle protocol.",
-			})
 		}
 
-		if !cfg.OwnerNotified {
+		if len(pending) > 0 && !doc.Available {
+			// The usual trigger notice waits until the document is sent
 			emails = append(emails, EmailAction{
-				Kind:    EmailTriggerNotice,
+				Kind:    EmailDeliveryBlocked,
 				To:      cfg.Owner,
-				Subject: "Deadman's Handle Triggered",
-				Body:    triggerNoticeBody(cfg.Timeout, cfg.Recipients),
+				Subject: "Deadman's Handle Triggered - Document Missing",
+				Body:    deliveryBlockedBody(cfg.Timeout, doc.Location, pending),
 			})
+		} else {
+			// Send document to each recipient that has not yet received it
+			for _, recipient := range pending {
+				emails = append(emails, EmailAction{
+					Kind:    EmailDocument,
+					To:      recipient,
+					Subject: "Important Document - Deadman's Handle",
+					Body:    "Please find the important document attached. This has been sent as per the deadman's handle protocol.",
+				})
+			}
+
+			if !cfg.OwnerNotified {
+				emails = append(emails, EmailAction{
+					Kind:    EmailTriggerNotice,
+					To:      cfg.Owner,
+					Subject: "Deadman's Handle Triggered",
+					Body:    triggerNoticeBody(cfg.Timeout, cfg.Recipients),
+				})
+			}
 		}
+	} else if !doc.Available {
+		emails = append(emails, EmailAction{
+			Kind:    EmailDocumentMissing,
+			To:      cfg.Owner,
+			Subject: "Deadman's Handle Document Missing",
+			Body:    documentMissingBody(cfg.Timeout, doc.Location),
+		})
 	}
 
 	// Check if warning should be sent
@@ -155,6 +192,27 @@ func triggerNoticeBody(timeout time.Time, recipients []string) string {
 		" passed without a check-in, so your document is being sent to:\n\n" +
 		"  " + strings.Join(recipients, "\n  ") + "\n\n" +
 		"If this is a mistake, check in to reset the timeout and contact the recipients."
+}
+
+// documentMissingBody warns the owner, before the timeout, that there is
+// nothing to send.
+func documentMissingBody(timeout time.Time, location string) string {
+	return "Warning: The document for your deadman's handle is missing from " + location + ". " +
+		"If the handle triggers, on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		", nothing can be sent to your recipients.\n\n" +
+		"Upload the document to fix this. You will be reminded daily until you do."
+}
+
+// deliveryBlockedBody tells the owner that the handle has triggered but the
+// document could not be sent.
+func deliveryBlockedBody(timeout time.Time, location string, pending []string) string {
+	return "Your deadman's handle check-in deadline of " +
+		timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		" passed without a check-in, but the document is missing from " + location +
+		", so it could not be sent to:\n\n" +
+		"  " + strings.Join(pending, "\n  ") + "\n\n" +
+		"Upload the document and it will be sent on the next daily run. " +
+		"If this is a mistake, check in to reset the timeout."
 }
 
 // warningBody describes how long the owner has left to check in. The day

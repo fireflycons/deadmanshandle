@@ -49,6 +49,17 @@ resource "aws_iam_role_policy" "lambda_policy" {
         ]
       },
       {
+        # Lets HeadObject report a missing document as NotFound rather than
+        # AccessDenied, so the daily run can warn the owner
+        Effect = "Allow"
+        Action = [
+          "s3:ListBucket"
+        ]
+        Resource = [
+          aws_s3_bucket.document_bucket.arn
+        ]
+      },
+      {
         Effect = "Allow"
         Action = [
           "ses:SendEmail",

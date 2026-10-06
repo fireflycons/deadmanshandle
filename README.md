@@ -68,6 +68,11 @@ retried on the next daily run without re-sending to anyone else:
 
 A check-in clears both. Leave them out of a config file you upload by hand.
 
+Every daily run also checks that the document is in S3. If it is missing, the
+owner is emailed each day until it is uploaded. If the timeout has passed while
+it is missing, the owner is told that nothing could be sent, and the run errors
+(raising the alarm); once the document is uploaded, the next run delivers it.
+
 ## Building
 
 ### Prerequisites

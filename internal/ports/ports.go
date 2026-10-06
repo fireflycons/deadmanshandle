@@ -13,6 +13,8 @@ type ConfigStore interface {
 // DocumentStore defines the interface for retrieving documents from storage
 type DocumentStore interface {
 	GetDocument(ctx context.Context, bucket, key string) ([]byte, error)
+	// DocumentExists reports false, with no error, only if there is no such object
+	DocumentExists(ctx context.Context, bucket, key string) (bool, error)
 }
 
 // EmailSender defines the interface for sending emails

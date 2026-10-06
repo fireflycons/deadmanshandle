@@ -60,6 +60,11 @@ func (m *MockDocumentStore) GetDocument(ctx context.Context, bucket, key string)
 	return nil, nil
 }
 
+func (m *MockDocumentStore) DocumentExists(ctx context.Context, bucket, key string) (bool, error) {
+	_, ok := m.Documents[bucket][key]
+	return ok, nil
+}
+
 func (m *MockDocumentStore) SetDocument(bucket, key string, data []byte) {
 	if _, ok := m.Documents[bucket]; !ok {
 		m.Documents[bucket] = make(map[string][]byte)

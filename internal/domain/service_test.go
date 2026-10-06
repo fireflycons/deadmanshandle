@@ -1,12 +1,16 @@
 package domain
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
 )
+
+// testDocument is a document that is present
+var testDocument = Document{Location: "s3://bucket/document.pdf", Available: true}
 
 func TestCheckIn(t *testing.T) {
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -45,7 +49,7 @@ func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 		APIKey:     "test-key",
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -90,7 +94,7 @@ func TestProcessScheduledEventSkipsCompletedDeliveries(t *testing.T) {
 		OwnerNotified: true,
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -101,7 +105,7 @@ func TestProcessScheduledEventSkipsCompletedDeliveries(t *testing.T) {
 
 	// Everything delivered: nothing more to send
 	cfg.SentTo = append(cfg.SentTo, "recipient2@example.com")
-	emails, err = service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, err = service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -170,7 +174,7 @@ func TestProcessScheduledEventWarning(t *testing.T) {
 		APIKey:     "test-key",
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -211,6 +215,67 @@ func TestWarningBody(t *testing.T) {
 			got := warningBody(tt.remaining, timeout)
 			if !strings.Contains(got, tt.want) {
 				t.Errorf("Expected body to contain %q, got %q", tt.want, got)
+			}
+		})
+	}
+}
+
+func TestProcessScheduledEventDocumentMissing(t *testing.T) {
+	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	missing := Document{Location: "s3://bucket/document.pdf", Available: false}
+
+	tests := []struct {
+		name          string
+		timeout       time.Time
+		sentTo        []string
+		ownerNotified bool
+		wantKinds     []EmailKind
+		wantInBody    string
+	}{
+		{"well before timeout", now.AddDate(0, 0, 20), nil, false,
+			[]EmailKind{EmailDocumentMissing}, "missing from s3://bucket/document.pdf"},
+		{"within warnDays", now.AddDate(0, 0, 5), nil, false,
+			[]EmailKind{EmailDocumentMissing, EmailWarning}, "nothing can be sent to your recipients"},
+		{"after timeout", now.AddDate(0, 0, -1), nil, false,
+			[]EmailKind{EmailDeliveryBlocked}, "could not be sent to:\n\n  recipient1@example.com\n  recipient2@example.com\n"},
+		{"after timeout, one recipient already sent", now.AddDate(0, 0, -1), []string{"recipient1@example.com"}, true,
+			[]EmailKind{EmailDeliveryBlocked}, "could not be sent to:\n\n  recipient2@example.com\n"},
+		{"after timeout, all sent but owner notice pending", now.AddDate(0, 0, -1), []string{"recipient1@example.com", "recipient2@example.com"}, false,
+			[]EmailKind{EmailTriggerNotice}, "is being sent to"},
+		{"after timeout, all done", now.AddDate(0, 0, -1), []string{"recipient1@example.com", "recipient2@example.com"}, true,
+			nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Owner:         "owner@example.com",
+				Recipients:    []string{"recipient1@example.com", "recipient2@example.com"},
+				ResetDays:     30,
+				WarnDays:      7,
+				Timeout:       tt.timeout,
+				APIKey:        "test-key",
+				SentTo:        tt.sentTo,
+				OwnerNotified: tt.ownerNotified,
+			}
+
+			emails, err := NewDeadmansHandleServiceWithTime(now).ProcessScheduledEvent(t.Context(), cfg, missing)
+			if err != nil {
+				t.Fatalf("ProcessScheduledEvent failed: %v", err)
+			}
+
+			var kinds []EmailKind
+			for _, email := range emails {
+				kinds = append(kinds, email.Kind)
+				if email.To != cfg.Owner || email.AttachDocument() {
+					t.Errorf("Expected only owner emails without the document, got %+v", email)
+				}
+			}
+			if !slices.Equal(kinds, tt.wantKinds) {
+				t.Fatalf("Expected email kinds %v, got %v", tt.wantKinds, kinds)
+			}
+			if tt.wantInBody != "" && !strings.Contains(emails[0].Body, tt.wantInBody) {
+				t.Errorf("Expected body to contain %q, got %q", tt.wantInBody, emails[0].Body)
 			}
 		})
 	}

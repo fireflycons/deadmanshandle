@@ -58,8 +58,22 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		return err
 	}
 
+	// Check for the document on every run, so the owner hears about a
+	// missing one before it is needed
+	exists, err := h.documentStore.DocumentExists(ctx, h.documentBucket, h.documentKey)
+	if err != nil {
+		return fmt.Errorf("checking for the document: %w", err)
+	}
+	doc := domain.Document{
+		Location:  "s3://" + h.documentBucket + "/" + h.documentKey,
+		Available: exists,
+	}
+	if !exists {
+		slog.Warn("Document missing", "location", doc.Location)
+	}
+
 	// Process scheduled event
-	emails, err := h.service.ProcessScheduledEvent(ctx, cfg)
+	emails, err := h.service.ProcessScheduledEvent(ctx, cfg, doc)
 	if err != nil {
 		return err
 	}
@@ -101,6 +115,11 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		if h.service.RecordSent(cfg, email) {
 			changed = true
 		}
+	}
+
+	// Recipients are still waiting for a document that isn't there
+	if slices.ContainsFunc(emails, func(e domain.EmailAction) bool { return e.Kind == domain.EmailDeliveryBlocked }) {
+		errs = append(errs, fmt.Errorf("document %s is missing, so it was not sent", doc.Location))
 	}
 
 	if changed {

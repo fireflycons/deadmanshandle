@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -178,5 +179,58 @@ func TestScheduledHandlerDoesNotOverwriteConcurrentCheckIn(t *testing.T) {
 	}
 	if cfg.SentTo != nil || cfg.OwnerNotified {
 		t.Errorf("Expected no delivery state written over the check-in, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	}
+}
+
+func TestScheduledHandlerDocumentMissingBeforeTimeout(t *testing.T) {
+	cfg := triggeredConfig()
+	cfg.Timeout = testNow.AddDate(0, 0, 20)
+	handler, configStore, emailSender := newScheduledTest(t, cfg)
+	handler.documentStore = mocks.NewMockDocumentStore()
+	before := bytes.Clone(configStore.Data[testParam])
+
+	// The owner's email is the warning, so the run itself succeeds
+	if err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+
+	if len(emailSender.SentEmails) != 1 || emailSender.SentEmails[0].To != "owner@example.com" ||
+		!strings.Contains(emailSender.SentEmails[0].Body, "missing from s3://"+testBucket+"/"+testKey) {
+		t.Errorf("Expected a single missing-document warning to the owner, got %+v", emailSender.SentEmails)
+	}
+	if !bytes.Equal(configStore.Data[testParam], before) {
+		t.Error("Expected config not to be rewritten")
+	}
+}
+
+func TestScheduledHandlerDocumentMissingAfterTimeout(t *testing.T) {
+	handler, configStore, emailSender := newScheduledTest(t, triggeredConfig())
+	documentStore := mocks.NewMockDocumentStore()
+	handler.documentStore = documentStore
+
+	// Recipients are waiting, so the run errors to raise the alarm
+	err := handler.Handle(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "is missing") {
+		t.Fatalf("Expected a missing-document error, got %v", err)
+	}
+	if len(emailSender.SentEmails) != 1 || emailSender.SentEmails[0].To != "owner@example.com" ||
+		emailSender.SentEmails[0].Subject != "Deadman's Handle Triggered - Document Missing" {
+		t.Errorf("Expected a single delivery-blocked notice to the owner, got %+v", emailSender.SentEmails)
+	}
+	if cfg := storedConfig(t, configStore); cfg.SentTo != nil || cfg.OwnerNotified {
+		t.Errorf("Expected no delivery state, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	}
+
+	// Once the document is uploaded, the next run delivers it as normal
+	documentStore.SetDocument(testBucket, testKey, []byte("the document"))
+	emailSender.SentEmails = nil
+	if err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle after upload failed: %v", err)
+	}
+	if len(emailSender.SentEmails) != 3 {
+		t.Errorf("Expected 2 document emails and 1 owner notice after upload, got %+v", emailSender.SentEmails)
+	}
+	if cfg := storedConfig(t, configStore); len(cfg.SentTo) != 2 || !cfg.OwnerNotified {
+		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
 	}
 }
