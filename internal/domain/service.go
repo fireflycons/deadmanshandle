@@ -175,17 +175,3 @@ func warningBody(remaining time.Duration, timeout time.Time) string {
 		", on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ". " +
 		"Please check in before then to reset the timeout."
 }
-
-// DaysUntilTimeout returns the number of days until timeout
-func (s *DeadmansHandleService) DaysUntilTimeout(cfg *config.Config) int {
-	now := s.now()
-	if now.After(cfg.Timeout) {
-		return 0
-	}
-	return int(cfg.Timeout.Sub(now).Hours() / 24)
-}
-
-// IsTimeoutPassed checks if the timeout has passed
-func (s *DeadmansHandleService) IsTimeoutPassed(cfg *config.Config) bool {
-	return s.now().After(cfg.Timeout)
-}

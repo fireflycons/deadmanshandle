@@ -32,39 +32,6 @@ func TestCheckIn(t *testing.T) {
 	}
 }
 
-func TestDaysUntilTimeout(t *testing.T) {
-	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-	service := NewDeadmansHandleServiceWithTime(now)
-
-	cfg := &config.Config{
-		Timeout: now.AddDate(0, 0, 10),
-	}
-
-	days := service.DaysUntilTimeout(cfg)
-	if days != 10 {
-		t.Errorf("Expected 10 days until timeout, got %d", days)
-	}
-}
-
-func TestIsTimeoutPassed(t *testing.T) {
-	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-	service := NewDeadmansHandleServiceWithTime(now)
-
-	// Timeout in the past
-	cfg := &config.Config{
-		Timeout: now.AddDate(0, 0, -1),
-	}
-	if !service.IsTimeoutPassed(cfg) {
-		t.Error("Expected timeout to be passed")
-	}
-
-	// Timeout in the future
-	cfg.Timeout = now.AddDate(0, 0, 1)
-	if service.IsTimeoutPassed(cfg) {
-		t.Error("Expected timeout to not be passed")
-	}
-}
-
 func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 	service := NewDeadmansHandleServiceWithTime(now)
