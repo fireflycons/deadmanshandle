@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-1. **AWS Account**: With appropriate permissions for Lambda, API Gateway, S3, Parameter Store, SES, and EventBridge
-2. **Go 1.21+**: For building
+1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
+2. **Go 1.26+** (see `go.mod`): For building
 3. **Terraform 1.5+**: For infrastructure deployment
 4. **AWS CLI**: Configured with credentials
 5. **Make**: For build automation (optional but recommended)
@@ -116,12 +116,17 @@ terraform plan -out=tfplan
 ```
 
 Review the plan to ensure it will create the expected resources:
-- API Gateway with HTTP endpoint
-- Lambda functions (HTTP and Scheduled)
-- S3 bucket
-- EventBridge rule
-- Parameter Store configuration
-- IAM roles and policies
+- API Gateway HTTP API with the `POST /checkin` route
+- Lambda functions (HTTP and scheduled) and their log groups
+- S3 bucket for the document
+- EventBridge rule, with an SQS dead-letter queue
+- Parameter Store configuration (SecureString)
+- SES domain identity, and its DKIM records if `manage_dkim_dns_records` is true
+- SNS topic, owner email subscription and CloudWatch alarms
+- IAM role and policies
+
+The plan fails if the config file breaks the rules above, and warns if its
+`timeout` is not in the future.
 
 ### Step 3: Apply the Deployment
 
@@ -133,20 +138,27 @@ This will create all resources and output:
 - `api_endpoint`: Your check-in API endpoint
 - `document_bucket_name`: S3 bucket name
 - `config_parameter_name`: Parameter Store path
+- `http_lambda_function_name`, `scheduled_lambda_function_name`: Lambda names
 - `eventbridge_rule_name`: EventBridge rule name
+- `alarm_topic_arn`: SNS topic for alarms
+- `ses_dkim_dns_records`: DKIM records for the sender domain
+
+The owner then receives an email asking them to confirm the alarm subscription.
 
 ## Post-deployment Verification
 
 ### 1. Test the HTTP Endpoint
 
 ```bash
-API_ENDPOINT="https://your-api-endpoint-id.execute-api.region.amazonaws.com/dev"
+API_ENDPOINT="$(terraform output -raw api_endpoint)"
 API_KEY="your-api-key"
 
 curl -X POST "${API_ENDPOINT}/checkin" \
-  -H "x-api-key: ${API_KEY}" \
-  -H "Content-Type: application/json"
+  -H "x-api-key: ${API_KEY}"
 ```
+
+The API is throttled to about one request a minute, so a second call straight
+away gets HTTP 429.
 
 Expected response:
 ```json
@@ -159,13 +171,18 @@ Expected response:
 
 ### 2. Upload Document to S3
 
+The key must match `document_key` (default `document.pdf`). Recipients receive
+the attachment under the key's file name.
+
 ```bash
-aws s3 cp your-document.pdf s3://your-bucket-name/document.pdf
+aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```
 
 ### 3. Test EventBridge Rule
 
-Manually trigger the scheduled Lambda:
+Manually trigger the scheduled Lambda. This is a real run: if the timeout has
+passed it sends the document, and if it is within `warnDays` it warns the
+owner. An error also raises the `scheduled-errors` alarm.
 
 ```bash
 aws lambda invoke \
@@ -244,12 +261,10 @@ cd terraform
 terraform destroy
 ```
 
-**Warning**: This will delete all resources including:
-- Lambda functions
-- API Gateway
-- S3 bucket (if not protected)
-- EventBridge rules
-- Parameter Store configuration
+**Warning**: This deletes all the resources, including the Parameter Store
+configuration (and with it the current timeout), the SES identity and its DKIM
+records. The S3 bucket is versioned and is only deleted when empty, so
+`terraform destroy` fails until every object version is removed.
 
 ## Troubleshooting
 
@@ -264,8 +279,8 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --follow
 
 Common issues:
 - Missing IAM permissions
-- Invalid configuration JSON
-- SES sender not verified
+- Invalid configuration (see the rules under "Create Configuration File")
+- SES sender domain not verified
 - S3 document not found
 
 ### Permission Denied Errors
@@ -279,15 +294,18 @@ aws iam get-role-policy --role-name deadmanshandle-lambda-role \
 
 ### SES Email Not Sending
 
-1. Verify sender email is SES verified
-2. Check SES sending limits (100 emails/day in sandbox)
+1. Check the sender domain is verified:
+   `aws sesv2 get-email-identity --email-identity <domain>` should show
+   `"VerifiedForSendingStatus": true`
+2. In the SES sandbox, only verified recipients receive mail (200 emails a day);
+   request production access
 3. Verify recipient addresses are valid
 
 ### EventBridge Not Triggering
 
 1. Verify rule is enabled: `aws events describe-rule --name deadmanshandle-daily-check`
 2. Check Lambda permission: `aws lambda list-permissions --function-name deadmanshandle-scheduled`
-3. Review CloudWatch Events history
+3. Check the DLQ (`deadmanshandle-dlq`) and the `scheduled-not-run` alarm
 
 ## Monitoring
 
@@ -316,12 +334,13 @@ parameter, then run `terraform apply` so the subscription follows.
 
 ## Cost Estimation
 
-Typical monthly costs:
-- Lambda invocations: $0.20 per million (minimal)
-- API Gateway: $3.50 per million requests
-- S3 storage: Minimal (single small file)
-- Parameter Store: Minimal (single parameter)
-- SES: $0.10 per email sent
-- EventBridge: $0.35 per million events
+Usage is tiny (one scheduled run a day, occasional check-ins, a handful of
+emails), so most services cost nothing or fractions of a cent. The fixed costs
+are:
 
-Total for typical usage: ~$5-10/month
+- CloudWatch alarms: about $0.10 per alarm per month (3 alarms)
+- Route 53: the hosted zone's own charge, if it is not already paid for
+
+Lambda, API Gateway, S3, Parameter Store (standard parameter), SQS, SNS email
+and SES (about $0.10 per 1,000 emails) are negligible at this volume. Expect
+well under $1 a month; check current AWS pricing for your region.
