@@ -2,6 +2,16 @@ package mocks
 
 import (
 	"context"
+
+	"github.com/fireflycons/deadmanshandle/internal/ports"
+)
+
+// Compile-time checks that the mocks implement the ports
+var (
+	_ ports.ConfigStore     = (*MockConfigStore)(nil)
+	_ ports.DocumentStore   = (*MockDocumentStore)(nil)
+	_ ports.EmailSender     = (*MockEmailSender)(nil)
+	_ ports.APIKeyValidator = (*MockAPIKeyValidator)(nil)
 )
 
 // MockConfigStore is a mock implementation of ConfigStore
