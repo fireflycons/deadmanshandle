@@ -3,65 +3,74 @@
 ```
 deadmanshandle/
 │
-├── cmd/                           # Lambda entry points
+├── cmd/                                  # Lambda entry points
 │   ├── http/
-│   │   └── main.go               # HTTP API Gateway handler
+│   │   └── main.go                       # HTTP API Gateway handler
 │   └── scheduled/
-│       └── main.go               # EventBridge scheduled handler
+│       └── main.go                       # EventBridge scheduled handler
 │
-├── internal/                           # Application packages
-│   ├── adapters/                 # AWS service implementations
-│   │   ├── ssm_config_store.go   # Parameter Store adapter
-│   │   ├── s3_document_store.go  # S3 storage adapter
-│   │   ├── ses_email_sender.go   # SES email adapter
-│   │   └── api_key_validator.go  # API key validation
+├── internal/                             # Application packages
+│   ├── adapters/                         # AWS service implementations
+│   │   ├── ssm_config_store.go           # Parameter Store adapter
+│   │   ├── s3_document_store.go          # S3 storage adapter
+│   │   ├── ses_email_sender.go           # SES email adapter (builds the MIME message)
+│   │   ├── ses_email_sender_test.go      # MIME message tests
+│   │   └── api_key_validator.go          # API key validation
 │   │
-│   ├── config/                   # Configuration models
-│   │   └── config.go             # Config structure and utilities
+│   ├── config/                           # Configuration model
+│   │   ├── config.go                     # Config structure, parsing and validation
+│   │   └── config_test.go                # Parsing and validation tests
 │   │
-│   ├── domain/                   # Core business logic
-│   │   ├── service.go            # Main service with business rules
-│   │   └── service_test.go       # Domain logic tests
+│   ├── domain/                           # Core business logic
+│   │   ├── service.go                    # Main service with business rules
+│   │   └── service_test.go               # Domain logic tests
 │   │
-│   ├── handlers/                 # Lambda handlers
-│   │   ├── http_handler.go       # HTTP API handler
-│   │   ├── http_handler_test.go  # HTTP handler tests
-│   │   └── scheduled_event_handler.go  # EventBridge handler
+│   ├── handlers/                         # Lambda handlers
+│   │   ├── http_handler.go               # HTTP API handler
+│   │   ├── http_handler_test.go          # HTTP handler tests
+│   │   ├── scheduled_event_handler.go    # EventBridge handler
+│   │   └── scheduled_event_handler_test.go  # Scheduled handler tests
 │   │
-│   ├── mocks/                    # Mock implementations for testing
-│   │   └── mocks.go              # Mock interfaces
+│   ├── mocks/                            # Mock implementations for testing
+│   │   └── mocks.go                      # Mocks of the ports
 │   │
-│   └── ports/                    # Port interfaces (hexagonal architecture)
-│       └── ports.go              # Service interfaces
+│   └── ports/                            # Port interfaces (hexagonal architecture)
+│       └── ports.go                      # Service interfaces
 │
-├── terraform/                     # Infrastructure as Code
-│   ├── provider.tf               # AWS provider configuration
-│   ├── variables.tf              # Input variables
-│   ├── data.tf                   # Data sources
-│   ├── iam.tf                    # IAM roles and policies
-│   ├── lambda.tf                 # Lambda functions
-│   ├── api_gateway.tf            # HTTP API Gateway
-│   ├── s3.tf                     # S3 bucket configuration
-│   ├── parameter_store.tf        # SSM Parameter Store
-│   ├── eventbridge.tf            # EventBridge rules
-│   ├── outputs.tf                # Output values
-│   ├── terraform.tfvars.example  # Example variables file
-│   └── build/                    # Build artifacts (generated)
+├── terraform/                            # Infrastructure as Code
+│   ├── provider.tf                       # AWS provider and Terraform version
+│   ├── variables.tf                      # Input variables
+│   ├── data.tf                           # Data sources
+│   ├── iam.tf                            # IAM role and policies
+│   ├── lambda.tf                         # Lambda functions and log groups
+│   ├── api_gateway.tf                    # HTTP API Gateway
+│   ├── s3.tf                             # S3 bucket configuration
+│   ├── parameter_store.tf                # SSM parameter and seed-config checks
+│   ├── eventbridge.tf                    # EventBridge rule and DLQ
+│   ├── ses.tf                            # SES domain identity and DKIM records
+│   ├── alarms.tf                         # SNS topic and CloudWatch alarms
+│   ├── outputs.tf                        # Output values
+│   ├── terraform.tfvars.example          # Example variables file
+│   └── build/                            # Lambda zips (generated)
 │
-├── bin/                          # Compiled binaries (generated)
-│   ├── http                      # HTTP handler binary
-│   └── scheduled                 # Scheduled handler binary
+├── bin/                                  # Compiled binaries (generated)
+│   ├── http/bootstrap                    # HTTP handler binary
+│   └── scheduled/bootstrap               # Scheduled handler binary
 │
-├── go.mod                        # Go module definition
-├── go.sum                        # Go dependencies checksums
-├── Makefile                      # Build automation
-├── .gitignore                    # Git ignore rules
+├── go.mod                                # Go module definition
+├── go.sum                                # Go dependencies checksums
+├── Makefile                              # Build automation
+├── .gitattributes                        # LF line endings
+├── .gitignore                            # Git ignore rules
 │
-├── README.md                     # Project documentation
-├── DEPLOYMENT.md                 # Deployment guide
-├── spec.md                       # Project specification
-├── config.example.json           # Example configuration
-└── config.json                   # Configuration (git-ignored)
+├── README.md                             # Project documentation
+├── QUICKSTART.md                         # Quick start guide
+├── DEPLOYMENT.md                         # Deployment guide
+├── DEVELOPMENT.md                        # Development guide
+├── PROJECT_STRUCTURE.md                  # This file
+├── spec.md                               # Original requirements
+├── config.example.json                   # Example configuration
+└── config.json                           # Configuration (git-ignored)
 ```
 
 ## Directory Descriptions
@@ -71,104 +80,104 @@ deadmanshandle/
   - Handles check-in requests
   - Validates API keys
   - Updates configuration timeout
-  
+
 - **scheduled**: EventBridge scheduled event handler
   - Processes daily checks
   - Sends warning emails
   - Distributes documents on timeout
 
+Each `main.go` sets up JSON logging, creates the AWS clients and adapters once
+at init, and starts the Lambda runtime.
+
 ### `internal/adapters/` - AWS Service Adapters
 Implements the port interfaces using AWS SDK:
-- **SSMConfigStore**: Reads/writes configuration from Parameter Store
+- **SSMConfigStore**: Reads/writes the configuration as a SecureString parameter
 - **S3DocumentStore**: Retrieves documents from S3
-- **SESEmailSender**: Sends emails via SES with attachments
+- **SESEmailSender**: Sends emails via SES, with the document as an attachment
 - **SimpleAPIKeyValidator**: Validates API keys with constant-time comparison
 
-### `internal/config/` - Configuration Models
-- Defines the Config struct matching Parameter Store JSON
-- Provides parsing and serialization utilities
-- Includes timeout calculation logic
+### `internal/config/` - Configuration Model
+- Defines the Config struct matching Parameter Store JSON, including the
+  delivery state (`sentTo`, `ownerNotified`)
+- Parses, validates (`Config.Validate`) and serializes it
 
 ### `internal/domain/` - Core Business Logic
 - **DeadmansHandleService**: Main service encapsulating all business logic
-  - `CheckIn()`: Process owner check-in, update timeout
+  - `CheckIn()`: Process owner check-in, set timeout to now + `resetDays`
   - `ProcessScheduledEvent()`: Determine what emails to send
-  - `DaysUntilTimeout()`: Calculate days remaining
-  - `IsTimeoutPassed()`: Check if deadline passed
-  
+  - `RecordSent()`: Record a successful send in the delivery state
+
 - Tests using time injection for deterministic testing
 
 ### `internal/handlers/` - Lambda Handlers
-- **HTTPHandler**: Processes API Gateway requests
+- **HTTPHandler**: Processes API Gateway (payload 2.0) requests
   - Validates API key header
   - Calls domain service
   - Updates configuration
   - Returns JSON response
-  
+
 - **ScheduledEventHandler**: Processes EventBridge events
   - Fetches configuration
   - Calls domain service
   - Retrieves document if needed
-  - Sends emails
+  - Sends emails, then saves the delivery state
 
 ### `internal/mocks/` - Testing Mocks
 Mock implementations of all port interfaces for unit testing:
-- **MockConfigStore**: In-memory configuration storage
+- **MockConfigStore**: In-memory configuration storage, with injectable errors
 - **MockDocumentStore**: In-memory document storage
-- **MockEmailSender**: Captures sent emails without sending
-- **MockAPIKeyValidator**: Simple key comparison
+- **MockEmailSender**: Captures sent emails, and can fail for chosen recipients
+- **MockAPIKeyValidator**: Plain comparison of the provided and expected keys
 
 ### `internal/ports/` - Port Interfaces (Hexagonal Architecture)
 Defines contracts for external dependencies:
 - **ConfigStore**: Get/set configuration
 - **DocumentStore**: Retrieve documents
-- **EmailSender**: Send emails (single and batch)
+- **EmailSender**: Send an email, with optional attachments
 - **APIKeyValidator**: Validate API keys
 
 ### `terraform/` - Infrastructure as Code
-Terraform modules defining AWS resources:
+Terraform files defining AWS resources:
 - **provider.tf**: AWS provider configuration
 - **iam.tf**: Lambda execution role and policies
-- **lambda.tf**: Lambda function definitions and archiving
+- **lambda.tf**: Lambda function definitions, archiving and log groups
 - **api_gateway.tf**: HTTP API and routes
 - **s3.tf**: S3 bucket with security settings
-- **parameter_store.tf**: Configuration parameter
-- **eventbridge.tf**: Scheduled rules and targets
+- **parameter_store.tf**: Configuration parameter, and checks on the seed file
+- **eventbridge.tf**: Scheduled rule, target and dead-letter queue
+- **ses.tf**: SES domain identity, verified with DKIM
+- **alarms.tf**: Alarms that email the owner if the daily run fails or does not run
 - **variables.tf**: Input variables
 - **outputs.tf**: Output values
 - **data.tf**: Data sources (AWS account ID)
 
 ## Architecture Pattern: Hexagonal Architecture
 
-The application follows hexagonal architecture (ports & adapters):
+The application follows hexagonal architecture (ports & adapters). The domain
+makes the decisions; the handlers carry them out through the ports:
 
 ```
 ┌─────────────────────────────────────┐
 │       Lambda Entry Points           │
 │  (cmd/http, cmd/scheduled)          │
 └──────────────┬──────────────────────┘
-               │
-┌──────────────┴──────────────────────┐
+               │ wire up
+┌──────────────▼──────────────────────┐
 │        Handlers Layer               │
-│   (internal/handlers)                    │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────┴──────────────────────┐
-│    Core Domain Logic                │
-│ (internal/domain - Independent)          │
-└──────────────┬──────────────────────┘
-               │
-┌──────────────┴──────────────────────┐
-│      Port Interfaces                │
-│      (internal/ports)                    │
-└──────────────┬──────────────────────┘
-               │
-    ┌──────────┴──────────┐
-    │                     │
-┌───┴────┐        ┌──────┴──┐
-│Adapters│        │  Mocks  │
-│ (AWS)  │        │ (Tests) │
-└────────┘        └─────────┘
+│   (internal/handlers)               │
+└───────┬─────────────────────┬───────┘
+        │ calls               │ calls
+┌───────▼────────────┐ ┌──────▼──────────────┐
+│ Core Domain Logic  │ │  Port Interfaces    │
+│ (internal/domain)  │ │  (internal/ports)   │
+└────────────────────┘ └──────▲──────────────┘
+                              │ implement
+                     ┌────────┴─────────┐
+                     │                  │
+                ┌────┴─────┐       ┌────┴────┐
+                │ Adapters │       │  Mocks  │
+                │  (AWS)   │       │ (Tests) │
+                └──────────┘       └─────────┘
 ```
 
 Benefits:
@@ -182,8 +191,9 @@ Benefits:
 ### Unit Tests
 Located in `*_test.go` files within each package:
 - Domain service tests with time injection
-- HTTP handler tests with mocks
-- Configuration parsing tests
+- HTTP and scheduled handler tests with mocks
+- Configuration parsing and validation tests
+- SES adapter tests that parse the built MIME message
 
 ### Test Execution
 ```bash
@@ -193,11 +203,13 @@ go test -run TestName ./internal/domain  # Specific test
 ```
 
 ### Mock Usage
-All tests use mock implementations from `internal/mocks/`:
+Handler tests use the mocks from `internal/mocks/` for the ports, and the real
+domain service with a fixed clock:
 ```go
 configStore := mocks.NewMockConfigStore()
 emailSender := mocks.NewMockEmailSender()
-validator := mocks.NewMockAPIKeyValidator("key")
+validator := mocks.NewMockAPIKeyValidator()
+service := domain.NewDeadmansHandleServiceWithTime(now)
 ```
 
 ## Build Process
@@ -210,22 +222,21 @@ make clean      # Removes artifacts
 ```
 
 ### Production Build
-- Compiles for Linux ARM64 (Lambda architecture)
-- Creates optimized binaries
-- Packages as ZIP for Lambda deployment
+- Compiles for Linux ARM64 (Lambda architecture), CGO off, `lambda.norpc`
+- Names each binary `bootstrap`, as the `provided.al2023` runtime expects
 
 ### Terraform Deployment
-- Archives binaries into ZIP files
-- Creates S3-based deployment packages
+- Zips each binary (with the executable bit set) into `terraform/build/`
+- Uploads the zips directly as the Lambda functions' code
 - Manages all AWS infrastructure
 
 ## Environment Variables
 
 ### Runtime (Lambda)
-- `CONFIG_PARAMETER_NAME`: Parameter Store path
-- `SENDER_EMAIL`: SES verified sender
-- `DOCUMENT_BUCKET`: S3 bucket name
-- `DOCUMENT_KEY`: S3 object key
+- `CONFIG_PARAMETER_NAME`: Parameter Store path (both functions)
+- `SENDER_EMAIL`: Sender address, in the SES-verified domain (scheduled)
+- `DOCUMENT_BUCKET`: S3 bucket name (scheduled)
+- `DOCUMENT_KEY`: S3 object key (scheduled)
 
 ### Build/Deployment
 - `GOOS`: Operating system (linux for Lambda)
@@ -237,10 +248,10 @@ make clean      # Removes artifacts
 ### Go Dependencies (Standard Library Focus)
 - `github.com/aws/aws-lambda-go`: Lambda runtime
 - `github.com/aws/aws-sdk-go-v2`: AWS SDK
-- Standard library: encoding/json, time, context, etc.
+- Standard library: encoding/json, time, context, log/slog, mime, etc.
 
 ### External Tools
-- Go 1.21+
+- Go 1.26+ (see `go.mod`)
 - Terraform 1.5+
 - AWS CLI
 - Make (optional)
@@ -249,10 +260,11 @@ make clean      # Removes artifacts
 
 1. **API Key Validation**: Uses `subtle.ConstantTimeCompare` to prevent timing attacks
 2. **S3 Security**: All public access blocked, versioning enabled
-3. **Parameter Store**: Configuration encrypted at rest
+3. **Parameter Store**: The configuration, which holds the API key, is a SecureString
 4. **IAM Least Privilege**: Lambda role only has necessary permissions
-5. **SES Verification**: Requires verified sender email
-6. **Input Validation**: JSON parsing validates all configuration fields
+5. **SES Verification**: The sender domain is verified with DKIM by Terraform
+6. **Input Validation**: `Config.Validate` checks every configuration field
+7. **Logging**: The API key and the document are never logged
 
 ## Deployment Flow
 
