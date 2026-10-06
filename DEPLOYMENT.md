@@ -4,22 +4,35 @@
 
 1. **AWS Account**: With appropriate permissions for Lambda, API Gateway, S3, Parameter Store, SES, and EventBridge
 2. **Go 1.21+**: For building
-3. **Terraform 1.0+**: For infrastructure deployment
+3. **Terraform 1.5+**: For infrastructure deployment
 4. **AWS CLI**: Configured with credentials
 5. **Make**: For build automation (optional but recommended)
 
 ## Pre-deployment Setup
 
-### 1. Verify SES Configuration
+### 1. SES Sender Domain and Production Access
 
-Email sending requires SES to be configured:
+Terraform creates an SES identity for the domain of `sender_email` (in
+`aws_region`) and verifies it with DKIM, which also makes the emails less
+likely to be treated as spam. It needs three DKIM CNAME records:
+
+- With `manage_dkim_dns_records = true` (the default), Terraform creates them
+  in the Route 53 public hosted zone named after the domain, in the same
+  account. Verification completes a few minutes after `terraform apply`.
+- With `manage_dkim_dns_records = false`, add the records from the
+  `ses_dkim_dns_records` output at your DNS provider. SES verifies the domain
+  once they resolve (up to 72 hours).
+
+If the domain is already an SES identity in that region, import it first:
 
 ```bash
-# Add and verify sender email in SES (Production Access or Sandbox)
-# https://console.aws.amazon.com/ses/
+terraform import aws_sesv2_email_identity.sender firefly-consulting.co.uk
 ```
 
-For development/testing, request production access or use sandbox verified addresses.
+**Request SES production access.** A new account is in the SES sandbox, where
+mail is only delivered to verified addresses (200 a day). Recipients such as an
+executor or attorney cannot be expected to verify, so request production access
+in the SES console (Account dashboard) before relying on the handle.
 
 ### 2. Create Configuration File
 
@@ -70,7 +83,8 @@ cp terraform.tfvars.example terraform.tfvars
 
 Key variables:
 - `config_file_path`: Path to your config.json
-- `sender_email`: Verified SES email address
+- `sender_email`: Address the emails come from. Terraform verifies its domain in SES
+- `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
 - `aws_region`: Your preferred region
 - `document_bucket_name`: (Optional) Custom bucket name
 

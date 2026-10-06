@@ -54,7 +54,9 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "ses:SendEmail",
           "ses:SendRawEmail"
         ]
-        Resource = "*"
+        # Any identity in this account and region rather than just the sender:
+        # in the SES sandbox the verified recipient identities are checked too
+        Resource = "arn:aws:ses:${var.aws_region}:${data.aws_caller_identity.current.account_id}:identity/*"
       }
     ]
   })

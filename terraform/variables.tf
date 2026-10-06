@@ -22,9 +22,20 @@ variable "config_file_path" {
 }
 
 variable "sender_email" {
-  description = "Email address for sending notifications"
+  description = "Email address for sending notifications. Its domain is verified in SES (see ses.tf)."
   type        = string
   default     = "noreply@firefly-consulting.co.uk"
+
+  validation {
+    condition     = can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", var.sender_email))
+    error_message = "sender_email must be an email address."
+  }
+}
+
+variable "manage_dkim_dns_records" {
+  description = "Create the SES DKIM records in the Route 53 public zone named after sender_email's domain (in this account). Set false to add the records from the ses_dkim_dns_records output at another DNS provider."
+  type        = bool
+  default     = true
 }
 
 variable "document_bucket_name" {
