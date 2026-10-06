@@ -23,6 +23,11 @@ output "config_parameter_name" {
   value       = aws_ssm_parameter.config.name
 }
 
+output "alarm_topic_arn" {
+  description = "SNS topic that receives the scheduled run's alarms"
+  value       = aws_sns_topic.alarms.arn
+}
+
 output "eventbridge_rule_name" {
   description = "EventBridge rule name for daily check"
   value       = aws_cloudwatch_event_rule.daily_check.name

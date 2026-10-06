@@ -256,21 +256,20 @@ aws iam get-role-policy --role-name deadmanshandle-lambda-role \
 - SES send statistics
 - EventBridge rule triggers
 
-### Set Up CloudWatch Alarms
+### CloudWatch Alarms
 
-```bash
-# Create alarm for Lambda errors
-aws cloudwatch put-metric-alarm \
-  --alarm-name deadmanshandle-lambda-errors \
-  --alarm-description "Alert on Lambda errors" \
-  --metric-name Errors \
-  --namespace AWS/Lambda \
-  --statistic Sum \
-  --period 300 \
-  --threshold 1 \
-  --comparison-operator GreaterThanOrEqualToThreshold \
-  --dimensions Name=FunctionName,Value=deadmanshandle-http
-```
+Terraform creates these alarms (`terraform/alarms.tf`). Each one emails the
+config file's `owner` through the SNS topic in the `alarm_topic_arn` output.
+After `terraform apply`, the owner must confirm the subscription from the email
+AWS sends. If you change the owner, update `config_file_path` as well as the
+parameter, then run `terraform apply` so the subscription follows.
+
+- `deadmanshandle-scheduled-errors`: the daily run returned an error. This
+  includes failing to send to any recipient.
+- `deadmanshandle-scheduled-not-run`: the daily run was not invoked in the last
+  24 hours. This alarm fires once after the first deploy, until the first
+  scheduled run happens.
+- `deadmanshandle-dlq-messages`: EventBridge could not invoke the Lambda.
 
 ## Cost Estimation
 
