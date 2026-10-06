@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/fireflycons/deadmanshandle/internal/config"
@@ -95,7 +96,7 @@ func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTT
 	resp := HTTPResponse{
 		StatusCode: 200,
 		Message:    "Check-in successful",
-		NewTimeout: newCfg.Timeout.String(),
+		NewTimeout: newCfg.Timeout.Format(time.RFC3339),
 	}
 
 	respBody, _ := json.Marshal(resp)

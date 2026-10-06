@@ -106,6 +106,9 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 	if respBody.Message != "Check-in successful" {
 		t.Errorf("Expected success message, got %s", respBody.Message)
 	}
+	if respBody.NewTimeout != "2024-07-01T12:00:00Z" {
+		t.Errorf("Expected RFC 3339 newTimeout 2024-07-01T12:00:00Z, got %s", respBody.NewTimeout)
+	}
 
 	// Verify config was updated
 	updatedCfgData := configStore.Data["test-param"]
