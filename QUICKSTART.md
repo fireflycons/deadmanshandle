@@ -136,7 +136,8 @@ nano config.json
 aws ssm put-parameter \
   --name /deadmanshandle/dev/config \
   --value file://config.json \
-  --overwrite
+  --overwrite \
+  --type SecureString
 ```
 
 ## Running Tests Locally

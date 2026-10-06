@@ -1,6 +1,6 @@
 resource "aws_ssm_parameter" "config" {
   name  = "/${var.application_name}/${var.environment}/config"
-  type  = "String"
+  type  = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
   value = file(var.config_file_path)
 
   # The config file only seeds the parameter. After that the Lambda owns the

@@ -42,7 +42,7 @@ func (s *SSMConfigStore) SetConfig(ctx context.Context, parameterName string, da
 		Name:      &parameterName,
 		Value:     stringPtr(string(data)),
 		Overwrite: boolPtr(true),
-		Type:      types.ParameterTypeString,
+		Type:      types.ParameterTypeSecureString,
 	})
 	return err
 }

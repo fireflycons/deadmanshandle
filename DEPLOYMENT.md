@@ -177,7 +177,7 @@ aws ssm put-parameter \
   --name /deadmanshandle/dev/config \
   --value file://config.json \
   --overwrite \
-  --type String
+  --type SecureString
 ```
 
 ## Testing
