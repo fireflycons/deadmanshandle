@@ -14,8 +14,9 @@ The application uses hexagonal architecture with clear separation between:
 
 - **HTTP API Check-in**: Owner checks in via HTTP API to reset timeout
 - **Scheduled Event Processing**: Daily EventBridge event checks timeout and sends warnings
-- **Document Distribution**: On timeout, document from S3 is emailed to recipients. For additional security you should encrypt this document yourself prior to uploading to S3 and ensure the recipient(s) have the key and the knowledge to decrypt it upon receipt. A good choice is to put files into a [7-Zip](https://www.7-zip.org/) password protected archive which uses AES-256 encrpytion.
-- **Warning Emails**: Owner is warned when days to timeout falls below threshold
+- **Document Distribution**: On timeout, document from S3 is emailed to recipients. For additional security you should encrypt this document yourself prior to uploading to S3 and ensure the recipient(s) have the key and the knowledge to decrypt it upon receipt. A good choice is to put files into a [7-Zip](https://www.7-zip.org/) password protected archive which uses AES-256 encryption.
+- **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
+- **Alarms**: The owner is emailed if the daily run fails or does not run
 
 ## Project Structure
 
@@ -49,10 +50,13 @@ Configuration is stored in AWS Parameter Store as JSON:
     ],
     "resetDays": 30,
     "warnDays": 7,
-    "timeout": "2024-07-15T12:00:00Z",
+    "timeout": "2030-01-01T00:00:00Z",
     "apiKey": "your-secure-api-key"
 }
 ```
+
+The config is validated by `terraform plan` and by both Lambdas; see
+[DEPLOYMENT.md](DEPLOYMENT.md) for the rules.
 
 Once the timeout passes, the scheduled Lambda emails the document to each
 recipient and sends the owner a notice that it has done so. It records progress
@@ -67,8 +71,8 @@ A check-in clears both. Leave them out of a config file you upload by hand.
 ## Building
 
 ### Prerequisites
-- Go 1.21+
-- Terraform 1.0+
+- Go 1.26+ (see `go.mod`)
+- Terraform 1.5+
 - AWS CLI
 - Make
 
@@ -89,8 +93,10 @@ make clean
 
 ### Prerequisites
 1. Create a configuration JSON file with your settings
-2. Prepare an S3 bucket name for documents
-3. Ensure SES is configured for your sender email
+2. Choose a `sender_email` whose domain you control. Terraform verifies the
+   domain in SES with DKIM; request SES production access so that unverified
+   recipients can receive mail
+3. Run `make build`; Terraform deploys the zipped binaries
 
 ### Deploy with Terraform
 
@@ -108,7 +114,13 @@ terraform plan \
 terraform apply \
   -var="config_file_path=/path/to/config.json" \
   -var="sender_email=your-email@example.com"
+
+# Upload the document (the default key is document.pdf)
+aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```
+
+After the first apply, the owner must confirm the SNS subscription email to
+receive alarms. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 
 ## API Usage
 
@@ -145,10 +157,10 @@ go test -cover ./...
 
 ## Environment Variables
 
-- `CONFIG_PARAMETER_NAME`: Parameter Store path for configuration
-- `SENDER_EMAIL`: Email address for notifications
-- `DOCUMENT_BUCKET`: S3 bucket containing the document
-- `DOCUMENT_KEY`: S3 object key for the document
+- `CONFIG_PARAMETER_NAME`: Parameter Store path for configuration (both Lambdas)
+- `SENDER_EMAIL`: Email address for notifications (scheduled Lambda)
+- `DOCUMENT_BUCKET`: S3 bucket containing the document (scheduled Lambda)
+- `DOCUMENT_KEY`: S3 object key for the document (scheduled Lambda)
 
 ## AWS Services Used
 
@@ -158,7 +170,8 @@ go test -cover ./...
 - **Parameter Store**: Configuration storage
 - **S3**: Document storage
 - **SES**: Email delivery
-- **CloudWatch**: Logging and monitoring
+- **CloudWatch**: Logs (14-day retention) and alarms
+- **SNS**: Alarm emails to the owner
 
 ## Design Patterns
 
@@ -178,27 +191,28 @@ go test -cover ./...
 ## Security Considerations
 
 - All S3 buckets have public access blocked
-- Parameter Store uses encryption
+- The Parameter Store config is a SecureString, since it holds the API key
 - S3 bucket versioning enabled
 - API key validation uses constant-time comparison
-- SES sender verification required (configure in AWS console)
+- The SES sender domain is verified with DKIM by Terraform
 
 ## Troubleshooting
 
 ### Lambda Execution Errors
-- Check CloudWatch logs for the Lambda functions
+- Check CloudWatch logs for the Lambda functions; failures are logged with their error
 - Verify IAM role has correct permissions
-- Ensure Parameter Store configuration is valid JSON
+- Ensure the Parameter Store configuration is valid (see the rules in DEPLOYMENT.md)
 
 ### Email Not Sending
-- Verify SES sender email is verified in AWS
+- Check the SES sender domain is verified (DKIM records in DNS)
+- In the SES sandbox, only verified recipients receive mail; request production access
 - Check SES sending limits
 - Review email addresses in configuration
 
 ### EventBridge Not Triggering
 - Verify Lambda has permission from EventBridge
 - Check EventBridge rule is enabled
-- Review scheduled rule timezone settings
+- The schedule expression is in UTC
 
 ## License
 
