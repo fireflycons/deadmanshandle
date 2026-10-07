@@ -73,7 +73,8 @@ nano terraform.tfvars
 ```
 
 Update these fields:
-- `config_file_path`: Path to your config.json
+- `config_file_path`: Path to your config.json (default `../config.json`, the
+  repo root when running from `terraform/`)
 - `sender_email`: The address emails come from. Terraform verifies its domain
   in SES with DKIM
 - `manage_dkim_dns_records`: `true` if the domain's DNS is in Route 53 in this

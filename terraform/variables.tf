@@ -17,8 +17,11 @@ variable "environment" {
 }
 
 variable "config_file_path" {
-  description = "Path to initial configuration JSON file"
+  description = "Path to initial configuration JSON file, relative to the directory Terraform runs in"
   type        = string
+  # Defaults must be literals (no path.module), so this assumes Terraform runs
+  # from terraform/ and finds config.json at the repo root.
+  default = "../config.json"
 }
 
 variable "sender_email" {

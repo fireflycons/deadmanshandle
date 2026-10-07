@@ -82,7 +82,8 @@ cp terraform.tfvars.example terraform.tfvars
 ```
 
 Key variables:
-- `config_file_path`: Path to your config.json
+- `config_file_path`: Path to your config.json (default `../config.json`, the
+  repo root when running from `terraform/`)
 - `sender_email`: Address the emails come from. Terraform verifies its domain in SES
 - `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
 - `aws_region`: Your preferred region
