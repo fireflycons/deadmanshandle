@@ -16,7 +16,8 @@ The application uses hexagonal architecture with clear separation between:
 - **Scheduled Event Processing**: Daily EventBridge event checks timeout and sends warnings
 - **Document Distribution**: On timeout, document from S3 is emailed to recipients. For additional security you should encrypt this document yourself prior to uploading to S3 and ensure the recipient(s) have the key and the knowledge to decrypt it upon receipt. A good choice is to put files into a [7-Zip](https://www.7-zip.org/) password protected archive which uses AES-256 encryption.
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
-- **Alarms**: The owner is emailed if the daily run fails or does not run
+- **Alarms**: The owner is emailed if the daily run fails or does not run, or if
+  the check-in API is flooded
 
 ## Project Structure
 

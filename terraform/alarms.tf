@@ -76,3 +76,24 @@ resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
 
   tags = var.tags
 }
+
+# Junk traffic on the check-in API. Stage throttling is one bucket shared by
+# all callers, so a flood also throttles the owner's check-ins. HTTP APIs have
+# no 429-only metric; 4xx also counts bad keys (401) and unknown routes (404).
+# A few mistakes by the owner stay under the threshold.
+resource "aws_cloudwatch_metric_alarm" "api_rejected_requests" {
+  alarm_name          = "${var.application_name}-api-rejected-requests"
+  alarm_description   = "The check-in API is rejecting many requests (throttled, bad key or unknown route). A flood may be blocking check-ins; check in with the AWS CLI if needed."
+  namespace           = "AWS/ApiGateway"
+  metric_name         = "4xx"
+  dimensions          = { ApiId = aws_apigatewayv2_api.http_api.id, Stage = aws_apigatewayv2_stage.http_api_stage.name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 10
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+
+  tags = var.tags
+}

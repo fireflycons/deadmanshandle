@@ -158,7 +158,7 @@ curl -X POST "${API_ENDPOINT}/checkin" \
 ```
 
 The API is throttled to about one request a minute, so a second call straight
-away gets HTTP 429.
+away gets HTTP 429. The limit is shared by all callers, not per client.
 
 Expected response:
 ```json
@@ -333,6 +333,11 @@ parameter, then run `terraform apply` so the subscription follows.
   24 hours. This alarm fires once after the first deploy, until the first
   scheduled run happens.
 - `deadmanshandle-dlq-messages`: EventBridge could not invoke the Lambda.
+- `deadmanshandle-api-rejected-requests`: the check-in API rejected 10 or more
+  requests in 5 minutes (throttled, bad API key or unknown route). The
+  throttle is shared by all callers, so a flood also blocks your check-ins.
+  While it lasts, check in by writing the config with a future `timeout`
+  (see [Updating the Configuration](#updating-the-configuration)).
 
 ## Cost Estimation
 
@@ -340,7 +345,7 @@ Usage is tiny (one scheduled run a day, occasional check-ins, a handful of
 emails), so most services cost nothing or fractions of a cent. The fixed costs
 are:
 
-- CloudWatch alarms: about $0.10 per alarm per month (3 alarms)
+- CloudWatch alarms: about $0.10 per alarm per month (4 alarms)
 - Route 53: the hosted zone's own charge, if it is not already paid for
 
 Lambda, API Gateway, S3, Parameter Store (standard parameter), SQS, SNS email
