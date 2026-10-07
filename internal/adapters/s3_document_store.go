@@ -30,7 +30,9 @@ func (s *S3DocumentStore) GetDocument(ctx context.Context, bucket, key string) (
 	if err != nil {
 		return nil, err
 	}
-	defer output.Body.Close()
+	defer func() {
+		_ = output.Body.Close()
+	}()
 
 	return io.ReadAll(output.Body)
 }
