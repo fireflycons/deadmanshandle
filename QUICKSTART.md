@@ -77,6 +77,8 @@ Update these fields:
   repo root when running from `terraform/`)
 - `sender_email`: The address emails come from. Terraform verifies its domain
   in SES with DKIM
+- `create_ses_identity`: `false` if the domain is already a verified SES
+  identity in this account and region (Terraform then leaves it alone)
 - `manage_dkim_dns_records`: `true` if the domain's DNS is in Route 53 in this
   account (Terraform adds the records), otherwise `false` and add the records
   from the `ses_dkim_dns_records` output yourself

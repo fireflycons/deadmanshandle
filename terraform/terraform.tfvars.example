@@ -3,6 +3,7 @@ application_name = "deadmanshandle"
 environment   = "dev"
 config_file_path = "../config.json"
 sender_email  = "noreply@example.com" # SES identity for example.com is created and verified with DKIM
+create_ses_identity = true # false if example.com is already a verified SES identity in this account and region
 manage_dkim_dns_records = true # false if example.com DNS is not in Route 53 in this account
 document_bucket_name = "" # Leave empty for auto-generated name
 document_key  = "document.pdf"

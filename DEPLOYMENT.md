@@ -23,11 +23,11 @@ likely to be treated as spam. It needs three DKIM CNAME records:
   `ses_dkim_dns_records` output at your DNS provider. SES verifies the domain
   once they resolve (up to 72 hours).
 
-If the domain is already an SES identity in that region, import it first:
-
-```bash
-terraform import aws_sesv2_email_identity.sender firefly-consulting.co.uk
-```
+If the domain is already a verified SES identity in that region (for example,
+used by other applications), set `create_ses_identity = false`. Terraform then
+uses it as it is and never creates, changes or deletes it or its DKIM records,
+so `terraform destroy` leaves it alone. `manage_dkim_dns_records` is ignored
+and `ses_dkim_dns_records` is empty.
 
 **Request SES production access.** A new account is in the SES sandbox, where
 mail is only delivered to verified addresses (200 a day). Recipients such as an
@@ -85,6 +85,8 @@ Key variables:
 - `config_file_path`: Path to your config.json (default `../config.json`, the
   repo root when running from `terraform/`)
 - `sender_email`: Address the emails come from. Terraform verifies its domain in SES
+- `create_ses_identity`: `false` to use an existing verified SES identity for
+  the domain instead of creating one
 - `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
 - `aws_region`: Your preferred region
 - `document_bucket_name`: (Optional) Custom bucket name
@@ -122,7 +124,8 @@ Review the plan to ensure it will create the expected resources:
 - S3 bucket for the document
 - EventBridge rule, with an SQS dead-letter queue
 - Parameter Store configuration (SecureString)
-- SES domain identity, and its DKIM records if `manage_dkim_dns_records` is true
+- SES domain identity, unless `create_ses_identity` is false, and its DKIM
+  records if `manage_dkim_dns_records` is true
 - SNS topic, owner email subscription and CloudWatch alarms
 - IAM role and policies
 

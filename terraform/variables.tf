@@ -35,8 +35,14 @@ variable "sender_email" {
   }
 }
 
+variable "create_ses_identity" {
+  description = "Create the SES domain identity for sender_email's domain. Set false if the domain is already a verified SES identity in this account and region; it is then used as it is, and Terraform never manages or deletes it."
+  type        = bool
+  default     = true
+}
+
 variable "manage_dkim_dns_records" {
-  description = "Create the SES DKIM records in the Route 53 public zone named after sender_email's domain (in this account). Set false to add the records from the ses_dkim_dns_records output at another DNS provider."
+  description = "Create the SES DKIM records in the Route 53 public zone named after sender_email's domain (in this account). Set false to add the records from the ses_dkim_dns_records output at another DNS provider. Ignored when create_ses_identity is false."
   type        = bool
   default     = true
 }

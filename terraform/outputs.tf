@@ -29,9 +29,9 @@ output "alarm_topic_arn" {
 }
 
 output "ses_dkim_dns_records" {
-  description = "DKIM CNAME records that verify the sender domain (created automatically when manage_dkim_dns_records is true)"
+  description = "DKIM CNAME records that verify the sender domain (created automatically when manage_dkim_dns_records is true; empty when create_ses_identity is false)"
   value = [
-    for token in aws_sesv2_email_identity.sender.dkim_signing_attributes[0].tokens : {
+    for token in try(aws_sesv2_email_identity.sender[0].dkim_signing_attributes[0].tokens, []) : {
       name  = "${token}._domainkey.${local.sender_domain}"
       type  = "CNAME"
       value = "${token}.dkim.amazonses.com"
