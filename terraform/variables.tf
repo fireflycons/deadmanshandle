@@ -10,12 +10,6 @@ variable "application_name" {
   default     = "deadmanshandle"
 }
 
-variable "environment" {
-  description = "Environment name"
-  type        = string
-  default     = "dev"
-}
-
 variable "config_file_path" {
   description = "Path to initial configuration JSON file, relative to the directory Terraform runs in"
   type        = string

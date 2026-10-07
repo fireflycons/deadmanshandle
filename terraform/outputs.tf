@@ -1,6 +1,6 @@
 output "api_endpoint" {
   description = "HTTP API Gateway endpoint"
-  value       = aws_apigatewayv2_stage.http_api_stage.invoke_url
+  value       = trimsuffix(aws_apigatewayv2_stage.http_api_stage.invoke_url, "/") # the $default stage's URL ends in "/"
 }
 
 output "document_bucket_name" {

@@ -6,7 +6,7 @@ locals {
 }
 
 resource "aws_ssm_parameter" "config" {
-  name  = "/${var.application_name}/${var.environment}/config"
+  name  = "/${var.application_name}/config"
   type  = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
   value = file(var.config_file_path)
 

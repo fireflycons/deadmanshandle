@@ -15,7 +15,7 @@ resource "aws_apigatewayv2_api" "http_api" {
 
 resource "aws_apigatewayv2_stage" "http_api_stage" {
   api_id      = aws_apigatewayv2_api.http_api.id
-  name        = var.environment
+  name        = "$default" # served at the API root, with no stage segment in the URL
   auto_deploy = true
 
   default_route_settings {

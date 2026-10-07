@@ -1,6 +1,5 @@
 aws_region    = "us-east-1"
 application_name = "deadmanshandle"
-environment   = "dev"
 config_file_path = "../config.json"
 sender_email  = "noreply@example.com" # SES identity for example.com is created and verified with DKIM
 create_ses_identity = true # false if example.com is already a verified SES identity in this account and region
@@ -11,6 +10,5 @@ schedule_expression = "cron(0 2 * * ? *)" # 2 AM UTC daily
 
 tags = {
   Application = "deadmanshandle"
-  Environment = "dev"
   ManagedBy   = "terraform"
 }

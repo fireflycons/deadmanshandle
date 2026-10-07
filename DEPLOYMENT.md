@@ -239,7 +239,7 @@ vi config.json
 
 # Upload to Parameter Store
 aws ssm put-parameter \
-  --name /deadmanshandle/dev/config \
+  --name /deadmanshandle/config \
   --value file://config.json \
   --overwrite \
   --type SecureString
