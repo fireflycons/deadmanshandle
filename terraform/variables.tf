@@ -18,39 +18,16 @@ variable "config_file_path" {
   default = "../config.json"
 }
 
-variable "sender_email" {
-  description = "Email address for sending notifications. Its domain is verified in SES (see ses.tf)."
-  type        = string
-  default     = "noreply@firefly-consulting.co.uk"
-
-  validation {
-    condition     = can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", var.sender_email))
-    error_message = "sender_email must be an email address."
-  }
-}
-
 variable "create_ses_identity" {
-  description = "Create the SES domain identity for sender_email's domain. Set false if the domain is already a verified SES identity in this account and region; it is then used as it is, and Terraform never manages or deletes it."
+  description = "Create the SES domain identity for the domain of deployment.senderEmail in the config. Set false if the domain is already a verified SES identity in this account and region; it is then used as it is, and Terraform never manages or deletes it."
   type        = bool
   default     = true
 }
 
 variable "manage_dkim_dns_records" {
-  description = "Create the SES DKIM records in the Route 53 public zone named after sender_email's domain (in this account). Set false to add the records from the ses_dkim_dns_records output at another DNS provider. Ignored when create_ses_identity is false."
+  description = "Create the SES DKIM records in the Route 53 public zone named after the domain of deployment.senderEmail in the config (in this account). Set false to add the records from the ses_dkim_dns_records output at another DNS provider. Ignored when create_ses_identity is false."
   type        = bool
   default     = true
-}
-
-variable "document_bucket_name" {
-  description = "Name of the S3 bucket for storing the document"
-  type        = string
-  default     = ""
-}
-
-variable "document_key" {
-  description = "S3 object key for the document"
-  type        = string
-  default     = "document.pdf"
 }
 
 variable "schedule_expression" {

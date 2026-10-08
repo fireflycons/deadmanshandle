@@ -3,12 +3,19 @@ locals {
   # Config.Validate in internal/config. Later updates made with the AWS CLI
   # bypass these checks; the Lambdas reject an invalid config at run time.
   seed_config = jsondecode(file(var.config_file_path))
+
+  # The deployment section holds infrastructure settings. Unlike the rest of
+  # the file, it is read on every plan, and it is not stored in the parameter.
+  deployment           = try(local.seed_config.deployment, {})
+  sender_email         = try(local.deployment.senderEmail, "")
+  document_bucket_name = try(local.deployment.documentBucket, "")
+  document_key         = try(local.deployment.documentKey, "document.pdf")
 }
 
 resource "aws_ssm_parameter" "config" {
   name  = "/${var.application_name}/config"
   type  = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
-  value = file(var.config_file_path)
+  value = jsonencode({ for k, v in local.seed_config : k => v if k != "deployment" })
 
   # The config file only seeds the parameter. After that the Lambda owns the
   # value (each check-in rewrites the timeout), so later applies must not
@@ -40,6 +47,14 @@ resource "aws_ssm_parameter" "config" {
     precondition {
       condition     = try(trimspace(local.seed_config.apiKey) != "", false)
       error_message = "Config: apiKey is empty."
+    }
+    precondition {
+      condition     = can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", local.sender_email))
+      error_message = "Config: deployment.senderEmail must be an email address."
+    }
+    precondition {
+      condition     = try(trimspace(local.document_key) != "", false)
+      error_message = "Config: deployment.documentKey is blank."
     }
   }
 

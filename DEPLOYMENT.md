@@ -12,7 +12,8 @@
 
 ### 1. SES Sender Domain and Production Access
 
-Terraform creates an SES identity for the domain of `sender_email` (in
+Terraform creates an SES identity for the domain of `deployment.senderEmail`
+in the config file (in
 `aws_region`) and verifies it with DKIM, which also makes the emails less
 likely to be treated as spam. It needs three DKIM CNAME records:
 
@@ -54,9 +55,24 @@ Example configuration:
     "resetDays": 30,
     "warnDays": 7,
     "timeout": "2030-01-01T00:00:00Z",
-    "apiKey": "your-secure-random-api-key"
+    "apiKey": "your-secure-random-api-key",
+    "deployment": {
+        "senderEmail": "noreply@example.com",
+        "documentBucket": "",
+        "documentKey": "document.pdf"
+    }
 }
 ```
+
+The `deployment` section holds infrastructure settings. Terraform reads it on
+every plan, so changes to it take effect with `terraform apply`. It is not
+stored in the parameter.
+
+- `senderEmail`: Address the emails come from. Terraform verifies its domain
+  in SES.
+- `documentBucket`: (Optional) Bucket name. Empty or absent for a generated
+  name.
+- `documentKey`: (Optional) S3 key of the document, default `document.pdf`.
 
 Rules, checked by `terraform plan` and again by both Lambdas on every run:
 
@@ -64,6 +80,9 @@ Rules, checked by `terraform plan` and again by both Lambdas on every run:
   there must be at least one recipient.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
+- `deployment.senderEmail` must be an email address, and
+  `deployment.documentKey`, if given, must be non-empty. The Lambdas do not
+  check these.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
   check-in then moves it to `resetDays` from now. If it is already past when
   Terraform creates the parameter, the document is sent on the next daily
@@ -84,12 +103,10 @@ cp terraform.tfvars.example terraform.tfvars
 Key variables:
 - `config_file_path`: Path to your config.json (default `../config.json`, the
   repo root when running from `terraform/`)
-- `sender_email`: Address the emails come from. Terraform verifies its domain in SES
 - `create_ses_identity`: `false` to use an existing verified SES identity for
   the domain instead of creating one
 - `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
 - `aws_region`: Your preferred region
-- `document_bucket_name`: (Optional) Custom bucket name
 
 ## Build the Application
 
@@ -175,7 +192,7 @@ Expected response:
 
 ### 2. Upload Document to S3
 
-The key must match `document_key` (default `document.pdf`). Recipients receive
+The key must match `deployment.documentKey` (default `document.pdf`). Recipients receive
 the attachment under the key's file name. Until the document is uploaded, each
 daily run emails the owner that it is missing.
 
@@ -225,7 +242,8 @@ terraform import aws_cloudwatch_log_group.scheduled_handler /aws/lambda/deadmans
 
 ## Updating the Configuration
 
-Terraform only uses `config_file_path` to create the parameter. After that, the
+Terraform only uses `config_file_path` to create the parameter, apart from the
+`deployment` section (see above). After that, the
 Lambda rewrites the value on every check-in, so Terraform ignores changes to it
 and re-running `terraform apply` will not reset the countdown.
 
@@ -244,6 +262,10 @@ aws ssm put-parameter \
   --overwrite \
   --type SecureString
 ```
+
+The `deployment` section is ignored by the Lambdas and dropped from the
+parameter on their next save. To change it, edit `config.json` and run
+`terraform apply`.
 
 ## Testing
 

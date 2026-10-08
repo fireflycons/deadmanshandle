@@ -60,6 +60,11 @@ Update these fields:
 - `apiKey`: Generate a random secure key, e.g. `openssl rand -hex 32`
 - `resetDays`, `warnDays`: Days each check-in buys, and how many days before
   the deadline the warnings start (`warnDays` must be less than `resetDays`)
+- `deployment.senderEmail`: The address emails come from. Terraform verifies
+  its domain in SES with DKIM
+- `deployment.documentBucket`, `deployment.documentKey`: (Optional) Bucket
+  name (empty for a generated one) and the document's key (default
+  `document.pdf`)
 
 ## 4. Deploy (2 minutes)
 
@@ -75,8 +80,6 @@ nano terraform.tfvars
 Update these fields:
 - `config_file_path`: Path to your config.json (default `../config.json`, the
   repo root when running from `terraform/`)
-- `sender_email`: The address emails come from. Terraform verifies its domain
-  in SES with DKIM
 - `create_ses_identity`: `false` if the domain is already a verified SES
   identity in this account and region (Terraform then leaves it alone)
 - `manage_dkim_dns_records`: `true` if the domain's DNS is in Route 53 in this
@@ -126,7 +129,7 @@ The API allows about one request a minute; a quick second call gets HTTP 429.
 
 ### Upload Your Document
 ```bash
-# From the terraform directory; the key must match document_key (default document.pdf)
+# From the terraform directory; the key must match deployment.documentKey (default document.pdf)
 aws s3 cp important-document.pdf \
   "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```
@@ -167,6 +170,10 @@ aws ssm put-parameter \
   --type SecureString
 ```
 
+The `deployment` section is ignored by the Lambdas and dropped from the
+parameter on their next save. To change it, edit `config.json` and run
+`terraform apply`.
+
 ## Running Tests Locally
 
 ```bash
@@ -196,7 +203,7 @@ go test -v ./internal/domain
 
 ### "NoSuchKey" in the scheduled Lambda's logs
 - Upload the document to the bucket from `terraform output document_bucket_name`
-- Verify the object key matches `document_key` (default `document.pdf`)
+- Verify the object key matches `deployment.documentKey` (default `document.pdf`)
 
 ## Cleanup
 

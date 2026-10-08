@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "document_bucket" {
-  bucket = var.document_bucket_name != "" ? var.document_bucket_name : "${var.application_name}-documents-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
+  bucket = local.document_bucket_name != "" ? local.document_bucket_name : "${var.application_name}-documents-${data.aws_caller_identity.current.account_id}-${var.aws_region}"
 
   tags = merge(var.tags, {
     Name = "Document Bucket"

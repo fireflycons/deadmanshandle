@@ -1,4 +1,5 @@
-# SES sending identity for the domain of sender_email, verified with Easy DKIM.
+# SES sending identity for the domain of deployment.senderEmail in the config,
+# verified with Easy DKIM.
 # SES verifies the domain once the three DKIM CNAME records resolve. These are
 # created in Route 53 when manage_dkim_dns_records is true; otherwise add the
 # records from the ses_dkim_dns_records output at your DNS provider.
@@ -10,7 +11,7 @@
 # production access, mail is only delivered to verified recipients.
 
 locals {
-  sender_domain = split("@", var.sender_email)[1]
+  sender_domain = try(split("@", local.sender_email)[1], "") # an invalid address fails a precondition in parameter_store.tf
 }
 
 resource "aws_sesv2_email_identity" "sender" {

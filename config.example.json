@@ -7,5 +7,10 @@
     "resetDays": 30,
     "warnDays": 7,
     "timeout": "2030-01-01T00:00:00Z",
-    "apiKey": "change-me-to-secure-random-key"
+    "apiKey": "change-me-to-secure-random-key",
+    "deployment": {
+        "senderEmail": "noreply@example.com",
+        "documentBucket": "",
+        "documentKey": "document.pdf"
+    }
 }

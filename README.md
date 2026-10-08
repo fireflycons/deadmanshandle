@@ -99,9 +99,9 @@ make clean
 
 ### Prerequisites
 1. Create a configuration JSON file with your settings
-2. Choose a `sender_email` whose domain you control. Terraform verifies the
-   domain in SES with DKIM; request SES production access so that unverified
-   recipients can receive mail
+2. Set `deployment.senderEmail` in it to an address whose domain you control.
+   Terraform verifies the domain in SES with DKIM; request SES production
+   access so that unverified recipients can receive mail
 3. Run `make build`; Terraform deploys the zipped binaries
 
 ### Deploy with Terraform
@@ -112,14 +112,10 @@ cd terraform
 terraform init
 
 # Plan the deployment
-terraform plan \
-  -var="config_file_path=/path/to/config.json" \
-  -var="sender_email=your-email@example.com"
+terraform plan -var="config_file_path=/path/to/config.json"
 
 # Apply the deployment
-terraform apply \
-  -var="config_file_path=/path/to/config.json" \
-  -var="sender_email=your-email@example.com"
+terraform apply -var="config_file_path=/path/to/config.json"
 
 # Upload the document (the default key is document.pdf)
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"

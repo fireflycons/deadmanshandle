@@ -30,7 +30,7 @@ resource "aws_lambda_function" "http_handler" {
   environment {
     variables = {
       CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
-      SENDER_EMAIL          = var.sender_email
+      SENDER_EMAIL          = local.sender_email
     }
   }
 
@@ -56,9 +56,9 @@ resource "aws_lambda_function" "scheduled_handler" {
   environment {
     variables = {
       CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
-      SENDER_EMAIL          = var.sender_email
+      SENDER_EMAIL          = local.sender_email
       DOCUMENT_BUCKET       = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY          = var.document_key
+      DOCUMENT_KEY          = local.document_key
     }
   }
 
