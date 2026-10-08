@@ -138,8 +138,9 @@ Implements the port interfaces using AWS SDK:
     checks in during the run
 
 - **DocumentWatcher** and **DocumentWatchHandler**: Compare the document's
-  ETag with the recorded one, record it with a conditional swap, and email
-  the owner of a change
+  ETag with the recorded one, record it (and the time of a change) with a
+  conditional swap, and email the owner of a change, retrying a notice that
+  failed
 
 ### `internal/mocks/` - Testing Mocks
 Mock implementations of all port interfaces for unit testing:

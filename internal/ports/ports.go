@@ -34,8 +34,13 @@ type StateStore interface {
 	RecordSent(ctx context.Context, checkIns int64, recipient string) error
 	RecordOwnerNotified(ctx context.Context, checkIns int64) error
 	// SwapDocumentETag sets DocumentETag to current if it still equals
-	// previous (empty for none). Otherwise it returns ErrConditionFailed.
-	SwapDocumentETag(ctx context.Context, previous, current string) error
+	// previous (empty for none). Unless changedAt is zero, it also sets
+	// DocumentChangedAt to it and DocumentChangePending. Otherwise it returns
+	// ErrConditionFailed.
+	SwapDocumentETag(ctx context.Context, previous, current string, changedAt time.Time) error
+	// ClearDocumentChangePending clears DocumentChangePending if DocumentETag
+	// is still etag. Otherwise it returns ErrConditionFailed.
+	ClearDocumentChangePending(ctx context.Context, etag string) error
 }
 
 // DocumentStore defines the interface for retrieving documents from storage

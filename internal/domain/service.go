@@ -37,7 +37,22 @@ const (
 	// EmailDocumentChanged tells the owner that the document's content
 	// changed, in case someone else changed it
 	EmailDocumentChanged
+	// EmailDeliveryHeld tells the owner that the timeout has passed but the
+	// document changed recently, so it has not been sent yet
+	EmailDeliveryHeld
 )
+
+// ChangeHoldPeriod is how long after a change of the document its delivery
+// is held, so that the owner can react to an unauthorised change before the
+// recipients receive it. It runs from when the change was found, whether or
+// not the owner could be told, so a failing notice cannot hold delivery
+// forever.
+const ChangeHoldPeriod = 24 * time.Hour
+
+// ChangeNoticeRetryAfter is how long after a change was found a later check
+// may resend a notice that is still pending. It exceeds the Lambda timeouts,
+// so the check that found the change has finished, or failed, by then.
+const ChangeNoticeRetryAfter = 2 * time.Minute
 
 // Document describes the document to be sent, as found by the scheduled run
 type Document struct {
@@ -104,7 +119,9 @@ func (s *DeadmansHandleService) CheckIn(cfg *config.Config) time.Time {
 //
 // If the document is missing, the owner is warned instead: daily before the
 // timeout, and with an EmailDeliveryBlocked notice on each run after it while
-// recipients are still waiting.
+// recipients are still waiting. If its content changed within
+// ChangeHoldPeriod, the owner gets an EmailDeliveryHeld notice instead, and
+// the document is sent on the first run after the hold ends.
 func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config, state *config.State, doc Document) ([]EmailAction, error) {
 	var emails []EmailAction
 	now := s.now()
@@ -125,6 +142,14 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 				To:      cfg.Owner,
 				Subject: "Deadman's Handle Triggered - Document Missing",
 				Body:    deliveryBlockedBody(state.Timeout, doc.Location, pending),
+			})
+		} else if heldUntil := state.DocumentChangedAt.Add(ChangeHoldPeriod); len(pending) > 0 && now.Before(heldUntil) {
+			// The usual trigger notice waits until the document is sent
+			emails = append(emails, EmailAction{
+				Kind:    EmailDeliveryHeld,
+				To:      cfg.Owner,
+				Subject: "Deadman's Handle Triggered - Delivery Held",
+				Body:    deliveryHeldBody(state.Timeout, state.DocumentChangedAt, heldUntil, doc.Location, pending),
 			})
 		} else {
 			// Send document to each recipient that has not yet received it
@@ -169,30 +194,39 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 	return emails, nil
 }
 
-// DocumentChanged compares the document's current ETag with the one recorded.
-// The first document seen is recorded without notifying the owner; after
-// that, any change of content is reported. A missing document changes
-// nothing, so the recorded ETag survives a deletion and a re-upload with
-// different content is still reported.
-func (s *DeadmansHandleService) DocumentChanged(recorded string, doc Document) (notify, record bool) {
+// DocumentChanged compares the document's current ETag with the one recorded
+// in state. The first document seen is recorded without notifying the owner;
+// after that, any change of content is recorded and reported. A missing
+// document changes nothing, so the recorded ETag survives a deletion and a
+// re-upload with different content is still reported. A notice that is still
+// pending is reported again (without recording) once ChangeNoticeRetryAfter
+// has passed.
+func (s *DeadmansHandleService) DocumentChanged(state *config.State, doc Document) (notify, record bool) {
 	switch {
-	case !doc.Available || doc.ETag == recorded:
+	case !doc.Available:
 		return false, false
-	case recorded == "":
+	case doc.ETag == state.DocumentETag:
+		return state.DocumentChangePending && s.now().Sub(state.DocumentChangedAt) >= ChangeNoticeRetryAfter, false
+	case state.DocumentETag == "":
 		return false, true
 	default:
 		return true, true
 	}
 }
 
-// DocumentChangedEmail tells the owner that the document's content changed.
-// origin is nil when the change was found by the daily run.
-func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, state *config.State, doc Document, origin *ChangeOrigin) EmailAction {
+// Now returns the current time, as used for all of the service's decisions
+func (s *DeadmansHandleService) Now() time.Time {
+	return s.now()
+}
+
+// DocumentChangedEmail tells the owner that the document's content changed
+// at changedAt. origin is nil when not known from the S3 event.
+func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, state *config.State, doc Document, changedAt time.Time, origin *ChangeOrigin) EmailAction {
 	return EmailAction{
 		Kind:    EmailDocumentChanged,
 		To:      cfg.Owner,
 		Subject: "Deadman's Handle Document Changed",
-		Body:    documentChangedBody(s.now(), state.Timeout, doc.Location, origin),
+		Body:    documentChangedBody(changedAt, state.Timeout, doc.Location, origin),
 	}
 }
 
@@ -229,15 +263,32 @@ func deliveryBlockedBody(timeout time.Time, location string, pending []string) s
 
 // documentChangedBody reports a change of content, so that an unauthorised
 // change can be put right before the document is sent.
-func documentChangedBody(now, timeout time.Time, location string, origin *ChangeOrigin) string {
+func documentChangedBody(changedAt, timeout time.Time, location string, origin *ChangeOrigin) string {
 	body := "The content of the document for your deadman's handle, " + location +
-		", changed. This was noticed on " + now.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ".\n\n"
+		", changed. This was noticed on " + changedAt.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ".\n\n"
 	if origin != nil {
 		body += "Changed by AWS account " + origin.Requester + " from IP address " + origin.SourceIP + ".\n\n"
 	}
 	return body + "If you made this change, no action is needed. If you did not, someone else can " +
 		"write to the bucket: check its access and upload the correct document before the handle " +
-		"triggers on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") + "."
+		"triggers on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ".\n\n" +
+		"If the handle triggers before " + changedAt.Add(ChangeHoldPeriod).UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		", delivery to your recipients is held until then."
+}
+
+// deliveryHeldBody tells the owner that the handle has triggered but the
+// document changed too recently to send.
+func deliveryHeldBody(timeout, changedAt, heldUntil time.Time, location string, pending []string) string {
+	return "Your deadman's handle check-in deadline of " +
+		timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		" passed without a check-in, but the document at " + location + " changed on " +
+		changedAt.UTC().Format("Monday 2 January 2006 at 15:04 MST") +
+		", so it has not yet been sent to:\n\n" +
+		"  " + strings.Join(pending, "\n  ") + "\n\n" +
+		"It will be sent on the first daily run after " +
+		heldUntil.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ". " +
+		"If this is a mistake, check in to reset the timeout. If the change was not yours, " +
+		"upload the correct document; that change holds delivery again."
 }
 
 // warningBody describes how long the owner has left to check in. The day

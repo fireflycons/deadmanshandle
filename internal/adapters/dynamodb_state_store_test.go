@@ -18,6 +18,8 @@ func TestUsedNames(t *testing.T) {
 		{"SET #o = :true attribute_exists(#t) AND (attribute_not_exists(#c) OR #c = :c)", []string{"#c", "#o", "#t"}},
 		{"SET #e = :n attribute_exists(#t) AND attribute_not_exists(#e)", []string{"#e", "#t"}},
 		{"SET #e = :n #e = :p", []string{"#e"}},
+		{"SET #e = :n, #d = :d, #p = :true #e = :p", []string{"#d", "#e", "#p"}},
+		{"REMOVE #p #e = :e", []string{"#e", "#p"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expression, func(t *testing.T) {

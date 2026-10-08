@@ -230,25 +230,32 @@ func TestProcessScheduledEventDocumentMissing(t *testing.T) {
 }
 
 func TestDocumentChanged(t *testing.T) {
-	service := NewDeadmansHandleService()
+	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	service := NewDeadmansHandleServiceWithTime(now)
 	present := Document{Location: "s3://bucket/document.pdf", Available: true, ETag: `"new"`}
 	missing := Document{Location: "s3://bucket/document.pdf"}
 
 	tests := []struct {
 		name         string
-		recorded     string
+		state        config.State
 		doc          Document
 		notify, save bool
 	}{
-		{"first document is recorded silently", "", present, false, true},
-		{"same content", `"new"`, present, false, false},
-		{"changed content", `"old"`, present, true, true},
-		{"missing keeps the recorded ETag", `"old"`, missing, false, false},
-		{"missing before any document", "", missing, false, false},
+		{"first document is recorded silently", config.State{}, present, false, true},
+		{"same content", config.State{DocumentETag: `"new"`}, present, false, false},
+		{"changed content", config.State{DocumentETag: `"old"`}, present, true, true},
+		{"missing keeps the recorded ETag", config.State{DocumentETag: `"old"`}, missing, false, false},
+		{"missing before any document", config.State{}, missing, false, false},
+		{"pending notice, too soon to resend",
+			config.State{DocumentETag: `"new"`, DocumentChangePending: true, DocumentChangedAt: now.Add(-ChangeNoticeRetryAfter + time.Second)},
+			present, false, false},
+		{"pending notice is resent",
+			config.State{DocumentETag: `"new"`, DocumentChangePending: true, DocumentChangedAt: now.Add(-ChangeNoticeRetryAfter)},
+			present, true, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			notify, save := service.DocumentChanged(tt.recorded, tt.doc)
+			notify, save := service.DocumentChanged(&tt.state, tt.doc)
 			if notify != tt.notify || save != tt.save {
 				t.Errorf("Expected notify=%v record=%v, got notify=%v record=%v", tt.notify, tt.save, notify, save)
 			}
@@ -272,17 +279,76 @@ func TestDocumentChangedEmail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			email := service.DocumentChangedEmail(cfg, state, testDocument, tt.origin)
+			email := service.DocumentChangedEmail(cfg, state, testDocument, now, tt.origin)
 			if email.To != "owner@example.com" || email.Kind != EmailDocumentChanged || email.AttachDocument() {
 				t.Errorf("Expected an owner notice without attachment, got %+v", email)
 			}
-			for _, want := range []string{testDocument.Location, "Saturday 1 June 2024 at 12:00 UTC", "Tuesday 11 June 2024 at 12:00 UTC"} {
+			for _, want := range []string{testDocument.Location, "noticed on Saturday 1 June 2024 at 12:00 UTC",
+				"triggers on Tuesday 11 June 2024 at 12:00 UTC", "before Sunday 2 June 2024 at 12:00 UTC, delivery to your recipients is held"} {
 				if !strings.Contains(email.Body, want) {
 					t.Errorf("Expected body to contain %q, got %q", want, email.Body)
 				}
 			}
 			if got := strings.Contains(email.Body, "AWS account 123456789012 from IP address 192.0.2.1"); got != tt.wantOrigin {
 				t.Errorf("Expected origin in body %v, got %q", tt.wantOrigin, email.Body)
+			}
+		})
+	}
+}
+
+func TestProcessScheduledEventDeliveryHeld(t *testing.T) {
+	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	cfg := &config.Config{
+		Owner:      "owner@example.com",
+		Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
+		ResetDays:  30,
+		WarnDays:   7,
+	}
+	missing := Document{Location: testDocument.Location}
+
+	tests := []struct {
+		name      string
+		timeout   time.Time
+		changedAt time.Time
+		sentTo    []string
+		doc       Document
+		wantKinds []EmailKind
+	}{
+		{"never changed", now.AddDate(0, 0, -1), time.Time{}, nil, testDocument,
+			[]EmailKind{EmailDocument, EmailDocument, EmailTriggerNotice}},
+		{"changed an hour ago", now.AddDate(0, 0, -1), now.Add(-time.Hour), nil, testDocument,
+			[]EmailKind{EmailDeliveryHeld}},
+		{"changed just under the hold period ago", now.AddDate(0, 0, -1), now.Add(-ChangeHoldPeriod + time.Minute), nil, testDocument,
+			[]EmailKind{EmailDeliveryHeld}},
+		{"changed over the hold period ago", now.AddDate(0, 0, -1), now.Add(-ChangeHoldPeriod - time.Minute), nil, testDocument,
+			[]EmailKind{EmailDocument, EmailDocument, EmailTriggerNotice}},
+		{"held with one recipient already sent", now.AddDate(0, 0, -1), now.Add(-time.Hour), []string{"recipient1@example.com"}, testDocument,
+			[]EmailKind{EmailDeliveryHeld}},
+		{"missing document takes precedence", now.AddDate(0, 0, -1), now.Add(-time.Hour), nil, missing,
+			[]EmailKind{EmailDeliveryBlocked}},
+		{"no effect before the timeout", now.AddDate(0, 0, 20), now.Add(-time.Hour), nil, testDocument,
+			nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			state := &config.State{Timeout: tt.timeout, SentTo: tt.sentTo, DocumentChangedAt: tt.changedAt}
+			emails, err := NewDeadmansHandleServiceWithTime(now).ProcessScheduledEvent(t.Context(), cfg, state, tt.doc)
+			if err != nil {
+				t.Fatalf("ProcessScheduledEvent failed: %v", err)
+			}
+
+			var kinds []EmailKind
+			for _, email := range emails {
+				kinds = append(kinds, email.Kind)
+			}
+			if !slices.Equal(kinds, tt.wantKinds) {
+				t.Fatalf("Expected email kinds %v, got %v", tt.wantKinds, kinds)
+			}
+			if len(kinds) > 0 && kinds[0] == EmailDeliveryHeld {
+				heldUntil := tt.changedAt.Add(ChangeHoldPeriod).Format("Monday 2 January 2006 at 15:04 MST")
+				if !strings.Contains(emails[0].Body, "first daily run after "+heldUntil) || !strings.Contains(emails[0].Body, "recipient2@example.com") {
+					t.Errorf("Expected the hold's end and pending recipients in the body, got %q", emails[0].Body)
+				}
 			}
 		})
 	}

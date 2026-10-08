@@ -69,6 +69,8 @@ same time cannot undo each other's writes:
 - `sentTo`: recipients who have already been sent the document
 - `ownerNotified`: whether the owner has been told that it was sent
 - `documentETag`: the document's ETag when last seen
+- `documentChangedAt`, `documentChangePending`: when its content last changed,
+  and whether the owner has yet to be told
 
 Once the timeout passes, the scheduled Lambda emails the document to each
 recipient and sends the owner a notice that it has done so. Each send is
@@ -89,7 +91,15 @@ is checked straight away, and every daily run checks again in case an upload
 was missed. Only the first document ever seen is not reported, so deleting the
 document and uploading a different one is reported too. Your own updates are
 reported as well. If two checks see the same change at once, only one reports
-it. The daily run only sends the exact version it checked: if the document is
+it. If the email fails, it is sent again by a later check.
+
+If the timeout passes within 24 hours of a change, delivery is held: the
+owner is emailed that it is held, and the document is sent on the first daily
+run after the 24 hours are up. This gives time to check in, or to restore the
+document, if the change was not yours. The 24 hours run from when the change
+was found, even if the owner could not be emailed about it, so delivery
+cannot be held forever.
+ The daily run only sends the exact version it checked: if the document is
 replaced while the run is in progress, nothing is sent and the run's retry
 reports the change first.
 

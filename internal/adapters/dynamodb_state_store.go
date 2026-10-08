@@ -27,6 +27,8 @@ var stateAttributeNames = map[string]string{
 	"#s": "sentTo",
 	"#o": "ownerNotified",
 	"#e": "documentETag",
+	"#d": "documentChangedAt",
+	"#p": "documentChangePending",
 }
 
 // DynamoDBStateStore implements the StateStore interface with one DynamoDB item
@@ -80,6 +82,14 @@ func (s *DynamoDBStateStore) GetState(ctx context.Context) (*config.State, error
 	if etag, ok := output.Item["documentETag"].(*types.AttributeValueMemberS); ok {
 		state.DocumentETag = etag.Value
 	}
+	if changedAt, ok := output.Item["documentChangedAt"].(*types.AttributeValueMemberS); ok {
+		if state.DocumentChangedAt, err = time.Parse(time.RFC3339, changedAt.Value); err != nil {
+			return nil, fmt.Errorf("state documentChangedAt: %w", err)
+		}
+	}
+	if pending, ok := output.Item["documentChangePending"].(*types.AttributeValueMemberBOOL); ok {
+		state.DocumentChangePending = pending.Value
+	}
 	return &state, nil
 }
 
@@ -107,17 +117,32 @@ func (s *DynamoDBStateStore) RecordOwnerNotified(ctx context.Context, checkIns i
 	})
 }
 
-// SwapDocumentETag records current if the recorded ETag is still previous
-func (s *DynamoDBStateStore) SwapDocumentETag(ctx context.Context, previous, current string) error {
+// SwapDocumentETag records current, and the time of the change if given
+// with the owner's notice pending, if the recorded ETag is still previous
+func (s *DynamoDBStateStore) SwapDocumentETag(ctx context.Context, previous, current string, changedAt time.Time) error {
 	values := map[string]types.AttributeValue{
 		":n": &types.AttributeValueMemberS{Value: current},
+	}
+	expression := "SET #e = :n"
+	if !changedAt.IsZero() {
+		expression += ", #d = :d, #p = :true"
+		values[":d"] = &types.AttributeValueMemberS{Value: changedAt.UTC().Format(time.RFC3339)}
+		values[":true"] = &types.AttributeValueMemberBOOL{Value: true}
 	}
 	condition := "attribute_exists(#t) AND attribute_not_exists(#e)"
 	if previous != "" {
 		condition = "#e = :p"
 		values[":p"] = &types.AttributeValueMemberS{Value: previous}
 	}
-	return s.update(ctx, "SET #e = :n", condition, values)
+	return s.update(ctx, expression, condition, values)
+}
+
+// ClearDocumentChangePending records that the owner has been told of the
+// change to etag, unless the ETag has moved on since
+func (s *DynamoDBStateStore) ClearDocumentChangePending(ctx context.Context, etag string) error {
+	return s.update(ctx, "REMOVE #p", "#e = :e", map[string]types.AttributeValue{
+		":e": &types.AttributeValueMemberS{Value: etag},
+	})
 }
 
 // update applies an update expression to the state item, returning

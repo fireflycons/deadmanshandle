@@ -33,6 +33,11 @@ type State struct {
 	// ETag of the document last seen, so a change of content can be
 	// reported. Empty until a document has been seen.
 	DocumentETag string
+	// When a change of content was last found; zero if never. Delivery is
+	// held for a while after a change.
+	DocumentChangedAt time.Time
+	// Whether the owner has yet to be told of that change
+	DocumentChangePending bool
 }
 
 // ParseConfig parses and validates JSON configuration

@@ -271,3 +271,38 @@ func TestScheduledHandlerSendsNothingIfDocumentReplacedDuringRun(t *testing.T) {
 		t.Errorf("Expected no delivery recorded, got %+v", stateStore.State)
 	}
 }
+
+func TestScheduledHandlerHoldsDeliveryAfterChange(t *testing.T) {
+	// The timeout has passed and the run finds a changed document
+	state := triggeredState()
+	state.DocumentETag = `"recorded before the change"`
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), state)
+
+	// Held: the owner is told of the change and the hold, and the run succeeds
+	if err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+	var subjects []string
+	for _, email := range emailSender.SentEmails {
+		if email.To != "owner@example.com" {
+			t.Errorf("Expected nothing sent to recipients while held, got an email to %s", email.To)
+		}
+		subjects = append(subjects, email.Subject)
+	}
+	if want := []string{changedSubject, "Deadman's Handle Triggered - Delivery Held"}; !slices.Equal(subjects, want) {
+		t.Errorf("Expected subjects %v, got %v", want, subjects)
+	}
+	if stateStore.State.SentTo != nil || stateStore.State.OwnerNotified {
+		t.Errorf("Expected no delivery recorded, got %+v", stateStore.State)
+	}
+
+	// After the hold, the next daily run delivers as normal
+	handler.service = domain.NewDeadmansHandleServiceWithTime(testNow.Add(domain.ChangeHoldPeriod + time.Hour))
+	emailSender.SentEmails = nil
+	if err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle after the hold failed: %v", err)
+	}
+	if len(emailSender.SentEmails) != 3 {
+		t.Errorf("Expected 2 document emails and 1 owner notice after the hold, got %+v", emailSender.SentEmails)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
@@ -100,30 +101,51 @@ func TestDocumentWatchHandler(t *testing.T) {
 
 func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 	handler, stateStore, documentStore, emailSender := newDocumentWatchTest(t)
+
+	// The first document is recorded silently and is not timed
 	documentStore.SetDocument(testBucket, testKey, []byte("v1"))
 	if err := handler.Handle(context.Background(), testOrigin); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
-	recorded := stateStore.State.DocumentETag
+	if state := stateStore.State; !state.DocumentChangedAt.IsZero() || state.DocumentChangePending {
+		t.Errorf("Expected no change recorded for the first document, got %+v", state)
+	}
 
-	// The notice fails, so the new ETag is not kept
+	// The notice fails: the change is still recorded and timed, so the hold
+	// runs from now, and the notice stays pending
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["owner@example.com"] = sendErr
 	documentStore.SetDocument(testBucket, testKey, []byte("v2"))
 	if err := handler.Handle(context.Background(), testOrigin); !errors.Is(err, sendErr) {
 		t.Fatalf("Expected the send failure, got %v", err)
 	}
-	if got := stateStore.State.DocumentETag; got != recorded {
-		t.Errorf("Expected recorded ETag %s to be kept, got %s", recorded, got)
+	v2, _, _ := documentStore.DocumentETag(context.Background(), testBucket, testKey)
+	if state := stateStore.State; state.DocumentETag != v2 || !state.DocumentChangedAt.Equal(testNow) || !state.DocumentChangePending {
+		t.Errorf("Expected the change recorded at %v with its notice pending, got %+v", testNow, state)
+	}
+	delete(emailSender.FailFor, "owner@example.com")
+
+	// Too soon to resend: the check that found the change may still be running
+	if err := handler.Handle(context.Background(), nil); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+	if len(changeNotices(emailSender)) != 0 {
+		t.Errorf("Expected no resend within %v, got %+v", domain.ChangeNoticeRetryAfter, emailSender.SentEmails)
 	}
 
-	// The next check reports the change
-	delete(emailSender.FailFor, "owner@example.com")
-	if err := handler.Handle(context.Background(), nil); err != nil {
+	// Later, the pending notice is sent, with the original change time, and
+	// the change time is not moved
+	handler.watcher.service = domain.NewDeadmansHandleServiceWithTime(testNow.Add(domain.ChangeNoticeRetryAfter))
+	if err := handler.Handle(context.Background(), testOrigin); err != nil {
 		t.Fatalf("Retry Handle failed: %v", err)
 	}
-	if len(changeNotices(emailSender)) != 1 {
-		t.Errorf("Expected the change to be reported on retry, got %+v", emailSender.SentEmails)
+	notices := changeNotices(emailSender)
+	if len(notices) != 1 || !strings.Contains(notices[0].Body, "noticed on Saturday 1 June 2024 at 12:00 UTC") ||
+		strings.Contains(notices[0].Body, "AWS account") {
+		t.Errorf("Expected one resent notice with the original time and no origin, got %+v", notices)
+	}
+	if state := stateStore.State; !state.DocumentChangedAt.Equal(testNow) || state.DocumentChangePending {
+		t.Errorf("Expected the notice cleared and the change time kept, got %+v", state)
 	}
 }
 
@@ -142,16 +164,28 @@ func TestScheduledHandlerReportsDocumentChange(t *testing.T) {
 	}
 }
 
-func TestScheduledHandlerSendsDespiteFailedChangeCheck(t *testing.T) {
+func TestScheduledHandlerDeliversAfterHoldEvenIfOwnerUnreachable(t *testing.T) {
 	state := triggeredState()
 	state.DocumentETag = `"recorded before the change"`
 	handler, _, emailSender := newScheduledTest(t, testConfig(), state)
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["owner@example.com"] = sendErr
 
-	// The owner's notices fail, but the recipients still get the document
+	// The change is found but the owner cannot be told; delivery is held
 	if err := handler.Handle(context.Background()); !errors.Is(err, sendErr) {
 		t.Fatalf("Expected the send failure, got %v", err)
+	}
+	if len(emailSender.SentEmails) != 0 {
+		t.Errorf("Expected nothing sent while held, got %+v", emailSender.SentEmails)
+	}
+
+	// The failing notice does not extend the hold: once it is over, the
+	// recipients get the document
+	later := domain.NewDeadmansHandleServiceWithTime(testNow.Add(domain.ChangeHoldPeriod + time.Hour))
+	handler.service = later
+	handler.watcher.service = later
+	if err := handler.Handle(context.Background()); !errors.Is(err, sendErr) {
+		t.Fatalf("Expected the owner's send failures, got %v", err)
 	}
 	if len(emailSender.SentEmails) != 2 {
 		t.Errorf("Expected the document sent to both recipients, got %+v", emailSender.SentEmails)
@@ -174,7 +208,7 @@ func TestDocumentWatcherConcurrentChecks(t *testing.T) {
 			stateStore := mocks.NewMockStateStore(config.State{Timeout: testNow.AddDate(0, 0, 10), DocumentETag: `"v1"`})
 			stateStore.BeforeUpdate = func() {
 				stateStore.BeforeUpdate = nil
-				if err := stateStore.SwapDocumentETag(context.Background(), `"v1"`, tt.theirs); err != nil {
+				if err := stateStore.SwapDocumentETag(context.Background(), `"v1"`, tt.theirs, testNow); err != nil {
 					t.Fatalf("Concurrent swap failed: %v", err)
 				}
 			}

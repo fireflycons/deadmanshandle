@@ -136,7 +136,8 @@ aws s3 cp important-document.pdf \
 
 The handle cannot send anything until the document is uploaded. The first
 upload is recorded silently; after that, you are emailed whenever the content
-changes, in case someone else changed it.
+changes, in case someone else changed it. If the handle triggers within 24
+hours of a change, delivery waits until the 24 hours are up.
 
 ### Test Scheduled Event (Optional)
 

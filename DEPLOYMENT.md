@@ -206,7 +206,9 @@ the attachment under the key's file name. Until the document is uploaded, each
 daily run emails the owner that it is missing.
 
 The first upload is recorded silently. After that, the owner is emailed
-whenever the content changes, including your own updates.
+whenever the content changes, including your own updates. If the handle
+triggers within 24 hours of a change, delivery is held until the 24 hours are
+up; avoid replacing the document just before a deadline you might miss.
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"

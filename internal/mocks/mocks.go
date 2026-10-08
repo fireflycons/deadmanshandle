@@ -94,7 +94,7 @@ func (m *MockStateStore) RecordOwnerNotified(ctx context.Context, checkIns int64
 	return nil
 }
 
-func (m *MockStateStore) SwapDocumentETag(ctx context.Context, previous, current string) error {
+func (m *MockStateStore) SwapDocumentETag(ctx context.Context, previous, current string, changedAt time.Time) error {
 	if m.BeforeUpdate != nil {
 		m.BeforeUpdate()
 	}
@@ -109,6 +109,21 @@ func (m *MockStateStore) SwapDocumentETag(ctx context.Context, previous, current
 		return ports.ErrConditionFailed
 	}
 	m.State.DocumentETag = current
+	if !changedAt.IsZero() {
+		m.State.DocumentChangedAt = changedAt
+		m.State.DocumentChangePending = true
+	}
+	return nil
+}
+
+func (m *MockStateStore) ClearDocumentChangePending(ctx context.Context, etag string) error {
+	if m.BeforeUpdate != nil {
+		m.BeforeUpdate()
+	}
+	if m.State.DocumentETag != etag {
+		return ports.ErrConditionFailed
+	}
+	m.State.DocumentChangePending = false
 	return nil
 }
 

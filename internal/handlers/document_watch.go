@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
@@ -37,11 +38,12 @@ func NewDocumentWatcher(
 // between this one's read and its swap
 const swapAttempts = 3
 
-// Check compares doc with the recorded ETag, records the new ETag and tells
-// the owner of a change. Recording first, with a conditional swap, means
+// Check compares doc with the recorded ETag and, on a change, records the
+// new ETag with the time and a pending notice, then tells the owner and
+// clears the pending notice. Recording first, with a conditional swap, means
 // only one of several concurrent checks sends the notice. If the notice
-// fails, the swap is undone so that the next check retries it. origin is
-// nil when not called for an S3 event.
+// fails it stays pending, and a later check sends it. origin is nil when not
+// called for an S3 event.
 func (w *DocumentWatcher) Check(ctx context.Context, cfg *config.Config, doc domain.Document, origin *domain.ChangeOrigin) error {
 	for range swapAttempts {
 		state, err := w.stateStore.GetState(ctx)
@@ -49,37 +51,47 @@ func (w *DocumentWatcher) Check(ctx context.Context, cfg *config.Config, doc dom
 			return fmt.Errorf("reading the recorded document ETag: %w", err)
 		}
 
-		notify, record := w.service.DocumentChanged(state.DocumentETag, doc)
-		if !record {
-			return nil
-		}
-
-		err = w.stateStore.SwapDocumentETag(ctx, state.DocumentETag, doc.ETag)
-		if errors.Is(err, ports.ErrConditionFailed) {
-			// Another check recorded an ETag first; compare with that one
-			continue
-		}
-		if err != nil {
-			return fmt.Errorf("recording the document ETag: %w", err)
-		}
-
-		if !notify {
-			slog.Info("Document ETag recorded", "etag", doc.ETag)
-			return nil
-		}
-
-		email := w.service.DocumentChangedEmail(cfg, state, doc, origin)
-		if err := w.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, nil); err != nil {
-			err = fmt.Errorf("sending document change notice to %s: %w", email.To, err)
-			// A failed condition means a later check has already moved the
-			// recorded ETag on, and reports from there
-			revertErr := w.stateStore.SwapDocumentETag(ctx, doc.ETag, state.DocumentETag)
-			if revertErr != nil && !errors.Is(revertErr, ports.ErrConditionFailed) {
-				return errors.Join(err, fmt.Errorf("restoring the recorded document ETag: %w", revertErr))
+		notify, record := w.service.DocumentChanged(state, doc)
+		changedAt := state.DocumentChangedAt
+		switch {
+		case record:
+			// The silent first sighting is not a change, so is not timed
+			var recordedAt time.Time
+			if notify {
+				changedAt = w.service.Now()
+				recordedAt = changedAt
 			}
-			return err
+			err = w.stateStore.SwapDocumentETag(ctx, state.DocumentETag, doc.ETag, recordedAt)
+			if errors.Is(err, ports.ErrConditionFailed) {
+				// Another check recorded an ETag first; compare with that one
+				continue
+			}
+			if err != nil {
+				return fmt.Errorf("recording the document ETag: %w", err)
+			}
+			if !notify {
+				slog.Info("Document ETag recorded", "etag", doc.ETag)
+				return nil
+			}
+		case notify:
+			// Resending an earlier notice; this event's origin is not the change's
+			origin = nil
+		default:
+			return nil
+		}
+
+		email := w.service.DocumentChangedEmail(cfg, state, doc, changedAt, origin)
+		if err := w.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, nil); err != nil {
+			return fmt.Errorf("sending document change notice to %s (it stays pending): %w", email.To, err)
 		}
 		slog.Info("Document change reported", "to", email.To, "from", state.DocumentETag, "etag", doc.ETag)
+
+		// A failed condition means the ETag has moved on, and the newer
+		// change has its own pending notice
+		err = w.stateStore.ClearDocumentChangePending(ctx, doc.ETag)
+		if err != nil && !errors.Is(err, ports.ErrConditionFailed) {
+			return fmt.Errorf("clearing the pending change notice: %w", err)
+		}
 		return nil
 	}
 	return fmt.Errorf("recording the document ETag: still changing after %d attempts", swapAttempts)
