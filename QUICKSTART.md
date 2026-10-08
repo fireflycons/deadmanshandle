@@ -123,7 +123,8 @@ curl -X POST "${API_ENDPOINT}/checkin" \
 # }
 ```
 
-The API allows about one request a minute; a quick second call gets HTTP 429.
+The API allows about one request a minute; quick repeated calls usually get
+HTTP 429 (API Gateway throttles on a best-effort basis).
 
 ## What's Next?
 
@@ -176,6 +177,8 @@ aws ssm put-parameter \
 The Lambdas ignore the `deployment` section and `timeout`. To change the
 `deployment` section, edit `config.json` and run `terraform apply`; the
 timeout is changed by checking in.
+Check-ins cache the configuration for up to 5 minutes, so a new `apiKey` can
+take that long to work.
 If the API is unavailable, you can check in with the AWS CLI; see
 "Checking in without the API" in DEPLOYMENT.md.
 

@@ -14,6 +14,8 @@ deadmanshandle/
 ├── internal/                             # Application packages
 │   ├── adapters/                         # AWS service implementations
 │   │   ├── ssm_config_store.go           # Parameter Store adapter
+│   │   ├── caching_config_store.go       # Config cache for the HTTP Lambda
+│   │   ├── caching_config_store_test.go  # Cache tests
 │   │   ├── dynamodb_state_store.go       # DynamoDB state adapter
 │   │   ├── dynamodb_state_store_test.go  # Expression attribute name tests
 │   │   ├── s3_document_store.go          # S3 storage adapter
@@ -103,6 +105,9 @@ at init, and starts the Lambda runtime.
 ### `internal/adapters/` - AWS Service Adapters
 Implements the port interfaces using AWS SDK:
 - **SSMConfigStore**: Reads the configuration from a SecureString parameter
+- **CachingConfigStore**: Wraps a ConfigStore and keeps the configuration for
+  a set time; the HTTP Lambda uses it for 5 minutes, so a flood of requests
+  does not cost an SSM and KMS call each
 - **DynamoDBStateStore**: Reads and atomically updates the state item; the
   updates that record deliveries or an ETag are conditional, so concurrent
   Lambdas cannot lose each other's writes

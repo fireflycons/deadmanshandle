@@ -187,8 +187,9 @@ curl -X POST "${API_ENDPOINT}/checkin" \
   -H "x-api-key: ${API_KEY}"
 ```
 
-The API is throttled to about one request a minute, so a second call straight
-away gets HTTP 429. The limit is shared by all callers, not per client.
+The API is throttled to about one request a minute, shared by all callers, not
+per client. API Gateway throttles on a best-effort basis, so rapid calls are
+mostly, but not always, rejected with HTTP 429.
 
 Expected response:
 ```json
@@ -276,6 +277,12 @@ aws ssm put-parameter \
   --overwrite \
   --type SecureString
 ```
+
+The check-in Lambda caches the configuration for 5 minutes on a warm instance,
+so that a flood of requests does not cost an SSM and KMS call each. For up to
+5 minutes after an update, check-ins may still use the old configuration,
+including the old `apiKey`. The daily run and the document watch always read
+the current configuration.
 
 The Lambdas ignore the `deployment` section and `timeout`. To change the
 `deployment` section, edit `config.json` and run `terraform apply`; the

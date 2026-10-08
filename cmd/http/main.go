@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
@@ -14,6 +15,9 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/domain"
 	"github.com/fireflycons/deadmanshandle/internal/handlers"
 )
+
+// configCacheTTL is how long a config change can take to reach check-ins
+const configCacheTTL = 5 * time.Minute
 
 var httpHandler *handlers.HTTPHandler
 
@@ -33,8 +37,9 @@ func init() {
 	ssmClient := ssm.NewFromConfig(cfg)
 	dynamoClient := dynamodb.NewFromConfig(cfg)
 
-	// Initialize adapters
-	configStore := adapters.NewSSMConfigStore(ssmClient)
+	// Initialize adapters. The config is cached on a warm instance, so a flood
+	// of requests does not cost an SSM and KMS call each.
+	configStore := adapters.NewCachingConfigStore(adapters.NewSSMConfigStore(ssmClient), configCacheTTL)
 	stateStore := adapters.NewDynamoDBStateStore(dynamoClient, os.Getenv("STATE_TABLE_NAME"))
 	keyValidator := adapters.NewSimpleAPIKeyValidator()
 
