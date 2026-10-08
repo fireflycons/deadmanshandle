@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"reflect"
 	"slices"
@@ -27,11 +28,7 @@ func newScheduledTest(t *testing.T, cfg *config.Config, state config.State) (*Sc
 	t.Helper()
 
 	configStore := mocks.NewMockConfigStore()
-	cfgData, err := cfg.ToJSON()
-	if err != nil {
-		t.Fatalf("ToJSON failed: %v", err)
-	}
-	configStore.Data[testParam] = cfgData
+	configStore.Data[testParam] = configJSON(t, cfg)
 
 	stateStore := mocks.NewMockStateStore(state)
 	documentStore := mocks.NewMockDocumentStore()
@@ -43,6 +40,16 @@ func newScheduledTest(t *testing.T, cfg *config.Config, state config.State) (*Sc
 	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, service, watcher, testParam, testBucket, testKey)
 
 	return handler, stateStore, emailSender
+}
+
+// configJSON encodes cfg as it is stored in Parameter Store
+func configJSON(t *testing.T, cfg *config.Config) []byte {
+	t.Helper()
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	return data
 }
 
 func testConfig() *config.Config {

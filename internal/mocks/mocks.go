@@ -43,10 +43,7 @@ func (m *MockConfigStore) GetConfig(ctx context.Context, parameterName string) (
 // conditions as the DynamoDB adapter
 type MockStateStore struct {
 	State      config.State
-	GetErr     error   // Returned by GetState when set
-	CheckInErr error   // Returned by CheckIn when set
-	RecordErr  error   // Returned by RecordSent and RecordOwnerNotified when set
-	SwapErrs   []error // Returned by successive SwapDocumentETag calls, if any remain
+	CheckInErr error // Returned by CheckIn when set
 	// BeforeUpdate, when set, runs before each conditional update, to
 	// simulate another Lambda writing concurrently
 	BeforeUpdate func()
@@ -57,9 +54,6 @@ func NewMockStateStore(state config.State) *MockStateStore {
 }
 
 func (m *MockStateStore) GetState(ctx context.Context) (*config.State, error) {
-	if m.GetErr != nil {
-		return nil, m.GetErr
-	}
 	state := m.State
 	state.SentTo = slices.Clone(m.State.SentTo)
 	return &state, nil
@@ -98,13 +92,6 @@ func (m *MockStateStore) SwapDocumentETag(ctx context.Context, previous, current
 	if m.BeforeUpdate != nil {
 		m.BeforeUpdate()
 	}
-	if len(m.SwapErrs) > 0 {
-		err := m.SwapErrs[0]
-		m.SwapErrs = m.SwapErrs[1:]
-		if err != nil {
-			return err
-		}
-	}
 	if m.State.DocumentETag != previous {
 		return ports.ErrConditionFailed
 	}
@@ -130,9 +117,6 @@ func (m *MockStateStore) ClearDocumentChangePending(ctx context.Context, etag st
 func (m *MockStateStore) recordable(checkIns int64) error {
 	if m.BeforeUpdate != nil {
 		m.BeforeUpdate()
-	}
-	if m.RecordErr != nil {
-		return m.RecordErr
 	}
 	if m.State.CheckIns != checkIns {
 		return ports.ErrConditionFailed

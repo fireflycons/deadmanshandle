@@ -10,14 +10,6 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/config"
 )
 
-// CheckinResult represents the result of a check-in operation
-type CheckinResult struct {
-	Success         bool
-	Message         string
-	NewTimeout      time.Time
-	WarningRequired bool
-}
-
 // EmailKind identifies why an email is being sent
 type EmailKind int
 

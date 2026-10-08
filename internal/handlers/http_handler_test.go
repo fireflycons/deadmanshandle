@@ -43,8 +43,7 @@ func TestHTTPHandlerInvalidAPIKey(t *testing.T) {
 		WarnDays:   7,
 		APIKey:     "correct-key",
 	}
-	cfgData, _ := cfg.ToJSON()
-	configStore.Data["test-param"] = cfgData
+	configStore.Data["test-param"] = configJSON(t, cfg)
 
 	service := domain.NewDeadmansHandleService()
 	validator := mocks.NewMockAPIKeyValidator()
@@ -76,8 +75,7 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 		WarnDays:   7,
 		APIKey:     "test-key",
 	}
-	cfgData, _ := cfg.ToJSON()
-	configStore.Data["test-param"] = cfgData
+	configStore.Data["test-param"] = configJSON(t, cfg)
 
 	// The handle had triggered and delivered to the recipient
 	stateStore := mocks.NewMockStateStore(config.State{
@@ -137,11 +135,11 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 		WarnDays:   7,
 		APIKey:     "test-key",
 	}
-	validData, _ := validCfg.ToJSON()
+	validData := configJSON(t, validCfg)
 
 	invalidCfg := *validCfg
 	invalidCfg.Recipients = nil
-	invalidData, _ := invalidCfg.ToJSON()
+	invalidData := configJSON(t, &invalidCfg)
 
 	tests := []struct {
 		name        string

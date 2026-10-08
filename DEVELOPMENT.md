@@ -209,14 +209,15 @@ func TestScheduledHandlerRetriesOnlyFailedRecipients(t *testing.T) {}
 ```go
 // Create mocks
 configStore := mocks.NewMockConfigStore()
+stateStore := mocks.NewMockStateStore(config.State{Timeout: timeout})
 emailSender := mocks.NewMockEmailSender()
 
 // Store a valid config (ParseConfig rejects an invalid one)
-cfgData, _ := cfg.ToJSON()
-configStore.Data["test-param"] = cfgData
+configStore.Data["test-param"] = configJSON(t, cfg)
 
 // Simulate failures
-configStore.SetErr = errors.New("ssm down")
+configStore.GetErr = errors.New("ssm down")
+stateStore.CheckInErr = errors.New("dynamodb down")
 emailSender.FailFor["recipient@example.com"] = errors.New("rejected")
 
 // Execute code

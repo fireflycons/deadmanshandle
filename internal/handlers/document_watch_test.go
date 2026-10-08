@@ -20,11 +20,7 @@ func newDocumentWatchTest(t *testing.T) (*DocumentWatchHandler, *mocks.MockState
 	t.Helper()
 
 	configStore := mocks.NewMockConfigStore()
-	cfgData, err := testConfig().ToJSON()
-	if err != nil {
-		t.Fatalf("ToJSON failed: %v", err)
-	}
-	configStore.Data[testParam] = cfgData
+	configStore.Data[testParam] = configJSON(t, testConfig())
 
 	stateStore := mocks.NewMockStateStore(config.State{Timeout: testNow.AddDate(0, 0, 10)})
 	documentStore := mocks.NewMockDocumentStore()

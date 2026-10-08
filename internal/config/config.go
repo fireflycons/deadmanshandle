@@ -83,8 +83,3 @@ func (c *Config) Validate() error {
 	}
 	return nil
 }
-
-// ToJSON converts config to JSON bytes
-func (c *Config) ToJSON() ([]byte, error) {
-	return json.Marshal(c)
-}
