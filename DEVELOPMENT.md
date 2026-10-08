@@ -188,13 +188,10 @@ func TestCheckIn(t *testing.T) {
     cfg := createTestConfig()
 
     // Execute
-    result, err := service.CheckIn(cfg)
+    timeout := service.CheckIn(cfg)
 
     // Verify
-    if err != nil {
-        t.Fatalf("CheckIn failed: %v", err)
-    }
-    if !result.Timeout.Equal(now.AddDate(0, 0, 30)) {
+    if !timeout.Equal(now.AddDate(0, 0, 30)) {
         t.Error("Timeout not updated correctly")
     }
 }

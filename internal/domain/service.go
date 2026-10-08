@@ -39,10 +39,6 @@ const (
 	EmailDocumentChanged
 )
 
-// NoRecordedETag is the recorded ETag before any document has been seen.
-// Terraform creates the parameter holding the recorded ETag with this value.
-const NoRecordedETag = "none"
-
 // Document describes the document to be sent, as found by the scheduled run
 type Document struct {
 	Location  string // Where the owner should upload it, e.g. s3://bucket/key
@@ -91,14 +87,10 @@ func NewDeadmansHandleServiceWithTime(t time.Time) *DeadmansHandleService {
 	}
 }
 
-// CheckIn handles the owner's check-in via HTTP API
-// Returns updated configuration and any warning that should be sent
-func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, error) {
-	newCfg := *cfg
-	newCfg.Timeout = s.now().AddDate(0, 0, cfg.ResetDays)
-	newCfg.SentTo = nil
-	newCfg.OwnerNotified = false
-	return &newCfg, nil
+// CheckIn handles the owner's check-in via HTTP API. It returns the new
+// timeout; storing it also clears the delivery state.
+func (s *DeadmansHandleService) CheckIn(cfg *config.Config) time.Time {
+	return s.now().AddDate(0, 0, cfg.ResetDays)
 }
 
 // ProcessScheduledEvent handles the EventBridge scheduled event
@@ -107,21 +99,21 @@ func (s *DeadmansHandleService) CheckIn(cfg *config.Config) (*config.Config, err
 // two readings.
 //
 // Once the timeout has passed, the document is sent only to recipients not
-// yet recorded in cfg.SentTo, and the owner is notified once. Call
-// RecordSent after each successful send so that later runs skip it.
+// yet recorded in state.SentTo, and the owner is notified once. Record each
+// successful send in the state so that later runs skip it.
 //
 // If the document is missing, the owner is warned instead: daily before the
 // timeout, and with an EmailDeliveryBlocked notice on each run after it while
 // recipients are still waiting.
-func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config, doc Document) ([]EmailAction, error) {
+func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *config.Config, state *config.State, doc Document) ([]EmailAction, error) {
 	var emails []EmailAction
 	now := s.now()
 
 	// Check if timeout has passed
-	if now.After(cfg.Timeout) {
+	if now.After(state.Timeout) {
 		var pending []string
 		for _, recipient := range cfg.Recipients {
-			if !slices.Contains(cfg.SentTo, recipient) {
+			if !slices.Contains(state.SentTo, recipient) {
 				pending = append(pending, recipient)
 			}
 		}
@@ -132,7 +124,7 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 				Kind:    EmailDeliveryBlocked,
 				To:      cfg.Owner,
 				Subject: "Deadman's Handle Triggered - Document Missing",
-				Body:    deliveryBlockedBody(cfg.Timeout, doc.Location, pending),
+				Body:    deliveryBlockedBody(state.Timeout, doc.Location, pending),
 			})
 		} else {
 			// Send document to each recipient that has not yet received it
@@ -145,12 +137,12 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 				})
 			}
 
-			if !cfg.OwnerNotified {
+			if !state.OwnerNotified {
 				emails = append(emails, EmailAction{
 					Kind:    EmailTriggerNotice,
 					To:      cfg.Owner,
 					Subject: "Deadman's Handle Triggered",
-					Body:    triggerNoticeBody(cfg.Timeout, cfg.Recipients),
+					Body:    triggerNoticeBody(state.Timeout, cfg.Recipients),
 				})
 			}
 		}
@@ -159,43 +151,22 @@ func (s *DeadmansHandleService) ProcessScheduledEvent(ctx context.Context, cfg *
 			Kind:    EmailDocumentMissing,
 			To:      cfg.Owner,
 			Subject: "Deadman's Handle Document Missing",
-			Body:    documentMissingBody(cfg.Timeout, doc.Location),
+			Body:    documentMissingBody(state.Timeout, doc.Location),
 		})
 	}
 
 	// Check if warning should be sent
-	warningThreshold := cfg.Timeout.AddDate(0, 0, -cfg.WarnDays)
-	if now.After(warningThreshold) && now.Before(cfg.Timeout) {
+	warningThreshold := state.Timeout.AddDate(0, 0, -cfg.WarnDays)
+	if now.After(warningThreshold) && now.Before(state.Timeout) {
 		emails = append(emails, EmailAction{
 			Kind:    EmailWarning,
 			To:      cfg.Owner,
 			Subject: "Deadman's Handle Check-In Required",
-			Body:    warningBody(cfg.Timeout.Sub(now), cfg.Timeout),
+			Body:    warningBody(state.Timeout.Sub(now), state.Timeout),
 		})
 	}
 
 	return emails, nil
-}
-
-// RecordSent updates the delivery state in cfg after email was sent
-// successfully. It reports whether cfg changed and needs to be saved.
-func (s *DeadmansHandleService) RecordSent(cfg *config.Config, email EmailAction) bool {
-	switch email.Kind {
-	case EmailDocument:
-		if slices.Contains(cfg.SentTo, email.To) {
-			return false
-		}
-		cfg.SentTo = append(cfg.SentTo, email.To)
-		return true
-	case EmailTriggerNotice:
-		if cfg.OwnerNotified {
-			return false
-		}
-		cfg.OwnerNotified = true
-		return true
-	default:
-		return false
-	}
 }
 
 // DocumentChanged compares the document's current ETag with the one recorded.
@@ -207,7 +178,7 @@ func (s *DeadmansHandleService) DocumentChanged(recorded string, doc Document) (
 	switch {
 	case !doc.Available || doc.ETag == recorded:
 		return false, false
-	case recorded == NoRecordedETag:
+	case recorded == "":
 		return false, true
 	default:
 		return true, true
@@ -216,12 +187,12 @@ func (s *DeadmansHandleService) DocumentChanged(recorded string, doc Document) (
 
 // DocumentChangedEmail tells the owner that the document's content changed.
 // origin is nil when the change was found by the daily run.
-func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, doc Document, origin *ChangeOrigin) EmailAction {
+func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, state *config.State, doc Document, origin *ChangeOrigin) EmailAction {
 	return EmailAction{
 		Kind:    EmailDocumentChanged,
 		To:      cfg.Owner,
 		Subject: "Deadman's Handle Document Changed",
-		Body:    documentChangedBody(s.now(), cfg.Timeout, doc.Location, origin),
+		Body:    documentChangedBody(s.now(), state.Timeout, doc.Location, origin),
 	}
 }
 

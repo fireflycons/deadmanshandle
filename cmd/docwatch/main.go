@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/ses"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
@@ -43,11 +44,13 @@ func init() {
 
 	// Initialize AWS clients
 	ssmClient := ssm.NewFromConfig(cfg)
+	dynamoClient := dynamodb.NewFromConfig(cfg)
 	s3Client := s3.NewFromConfig(cfg)
 	sesClient := ses.NewFromConfig(cfg)
 
 	// Initialize adapters
 	configStore := adapters.NewSSMConfigStore(ssmClient)
+	stateStore := adapters.NewDynamoDBStateStore(dynamoClient, os.Getenv("STATE_TABLE_NAME"))
 	documentStore := adapters.NewS3DocumentStore(s3Client)
 	emailSender := adapters.NewSESEmailSender(sesClient, os.Getenv("SENDER_EMAIL"))
 
@@ -55,7 +58,7 @@ func init() {
 	service := domain.NewDeadmansHandleService()
 
 	// Initialize handler
-	watcher := handlers.NewDocumentWatcher(configStore, emailSender, service, os.Getenv("DOCUMENT_ETAG_PARAMETER_NAME"))
+	watcher := handlers.NewDocumentWatcher(stateStore, emailSender, service)
 	documentWatchHandler = handlers.NewDocumentWatchHandler(
 		configStore,
 		documentStore,

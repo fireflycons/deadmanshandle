@@ -2,12 +2,36 @@ package ports
 
 import (
 	"context"
+	"errors"
+	"time"
+
+	"github.com/fireflycons/deadmanshandle/internal/config"
 )
 
-// ConfigStore defines the interface for storing and retrieving configuration
+// ErrConditionFailed is returned by a conditional StateStore update when the
+// state has changed since it was read
+var ErrConditionFailed = errors.New("state changed concurrently")
+
+// ConfigStore defines the interface for retrieving configuration
 type ConfigStore interface {
 	GetConfig(ctx context.Context, parameterName string) ([]byte, error)
-	SetConfig(ctx context.Context, parameterName string, data []byte) error
+}
+
+// StateStore holds the handle's mutable state. Each update is atomic, so
+// concurrent Lambdas cannot lose each other's writes.
+type StateStore interface {
+	GetState(ctx context.Context) (*config.State, error)
+	// CheckIn sets the timeout, clears the delivery state and increments
+	// CheckIns. It is unconditional: a check-in always wins.
+	CheckIn(ctx context.Context, timeout time.Time) error
+	// RecordSent adds recipient to SentTo, and RecordOwnerNotified sets
+	// OwnerNotified, if CheckIns still equals checkIns. Otherwise they return
+	// ErrConditionFailed.
+	RecordSent(ctx context.Context, checkIns int64, recipient string) error
+	RecordOwnerNotified(ctx context.Context, checkIns int64) error
+	// SwapDocumentETag sets DocumentETag to current if it still equals
+	// previous (empty for none). Otherwise it returns ErrConditionFailed.
+	SwapDocumentETag(ctx context.Context, previous, current string) error
 }
 
 // DocumentStore defines the interface for retrieving documents from storage

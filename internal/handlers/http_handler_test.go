@@ -1,10 +1,10 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -18,7 +18,7 @@ func TestHTTPHandlerMissingAPIKey(t *testing.T) {
 	configStore := mocks.NewMockConfigStore()
 	service := domain.NewDeadmansHandleService()
 	validator := mocks.NewMockAPIKeyValidator()
-	handler := NewHTTPHandler(configStore, service, validator, "test-param")
+	handler := NewHTTPHandler(configStore, mocks.NewMockStateStore(config.State{}), service, validator, "test-param")
 
 	request := events.APIGatewayV2HTTPRequest{
 		Headers: make(map[string]string),
@@ -41,7 +41,6 @@ func TestHTTPHandlerInvalidAPIKey(t *testing.T) {
 		Recipients: []string{"recipient@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    time.Now().AddDate(0, 0, 10),
 		APIKey:     "correct-key",
 	}
 	cfgData, _ := cfg.ToJSON()
@@ -49,7 +48,7 @@ func TestHTTPHandlerInvalidAPIKey(t *testing.T) {
 
 	service := domain.NewDeadmansHandleService()
 	validator := mocks.NewMockAPIKeyValidator()
-	handler := NewHTTPHandler(configStore, service, validator, "test-param")
+	handler := NewHTTPHandler(configStore, mocks.NewMockStateStore(config.State{}), service, validator, "test-param")
 
 	request := events.APIGatewayV2HTTPRequest{
 		Headers: map[string]string{
@@ -75,15 +74,21 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 		Recipients: []string{"recipient@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    now.AddDate(0, 0, -5),
 		APIKey:     "test-key",
 	}
 	cfgData, _ := cfg.ToJSON()
 	configStore.Data["test-param"] = cfgData
 
+	// The handle had triggered and delivered to the recipient
+	stateStore := mocks.NewMockStateStore(config.State{
+		Timeout:       now.AddDate(0, 0, -5),
+		SentTo:        []string{"recipient@example.com"},
+		OwnerNotified: true,
+	})
+
 	service := domain.NewDeadmansHandleServiceWithTime(now)
 	validator := mocks.NewMockAPIKeyValidator()
-	handler := NewHTTPHandler(configStore, service, validator, "test-param")
+	handler := NewHTTPHandler(configStore, stateStore, service, validator, "test-param")
 
 	request := events.APIGatewayV2HTTPRequest{
 		Headers: map[string]string{
@@ -112,12 +117,14 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 		t.Errorf("Expected RFC 3339 newTimeout 2024-07-01T12:00:00Z, got %s", respBody.NewTimeout)
 	}
 
-	// Verify config was updated
-	updatedCfgData := configStore.Data["test-param"]
-	updatedCfg, _ := config.ParseConfig(updatedCfgData)
+	// Verify the state was updated and the delivery state cleared
+	state := stateStore.State
 	expectedTimeout := now.AddDate(0, 0, 30)
-	if !updatedCfg.Timeout.Equal(expectedTimeout) {
-		t.Errorf("Expected timeout %v, got %v", expectedTimeout, updatedCfg.Timeout)
+	if !state.Timeout.Equal(expectedTimeout) {
+		t.Errorf("Expected timeout %v, got %v", expectedTimeout, state.Timeout)
+	}
+	if state.SentTo != nil || state.OwnerNotified || state.CheckIns != 1 {
+		t.Errorf("Expected delivery state cleared and CheckIns 1, got %+v", state)
 	}
 }
 
@@ -128,7 +135,6 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 		Recipients: []string{"recipient@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    now.AddDate(0, 0, 10),
 		APIKey:     "test-key",
 	}
 	validData, _ := validCfg.ToJSON()
@@ -142,7 +148,7 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 		apiKey      string
 		stored      []byte
 		getErr      error
-		setErr      error
+		checkInErr  error
 		wantStatus  int
 		wantMessage string
 	}{
@@ -151,7 +157,7 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 		{"config read fails", "test-key", validData, errors.New("ssm down"), nil, 500, "Failed to retrieve configuration"},
 		{"config missing", "test-key", nil, nil, nil, 500, "Failed to parse configuration"},
 		{"config invalid", "test-key", invalidData, nil, nil, 500, "Failed to parse configuration"},
-		{"config save fails", "test-key", validData, nil, errors.New("ssm down"), 500, "Failed to save configuration"},
+		{"check-in save fails", "test-key", validData, nil, errors.New("dynamodb down"), 500, "Failed to save check-in"},
 	}
 
 	for _, tt := range tests {
@@ -159,8 +165,10 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 			configStore := mocks.NewMockConfigStore()
 			configStore.Data["test-param"] = tt.stored
 			configStore.GetErr = tt.getErr
-			configStore.SetErr = tt.setErr
-			handler := NewHTTPHandler(configStore, domain.NewDeadmansHandleServiceWithTime(now), mocks.NewMockAPIKeyValidator(), "test-param")
+			initial := config.State{Timeout: now.AddDate(0, 0, 10)}
+			stateStore := mocks.NewMockStateStore(initial)
+			stateStore.CheckInErr = tt.checkInErr
+			handler := NewHTTPHandler(configStore, stateStore, domain.NewDeadmansHandleServiceWithTime(now), mocks.NewMockAPIKeyValidator(), "test-param")
 
 			request := events.APIGatewayV2HTTPRequest{Headers: map[string]string{}}
 			if tt.apiKey != "" {
@@ -183,9 +191,9 @@ func TestHTTPHandlerErrorPaths(t *testing.T) {
 				t.Errorf("Expected message %q and no newTimeout, got %+v", tt.wantMessage, body)
 			}
 
-			// A failed check-in must not change the stored config
-			if !bytes.Equal(configStore.Data["test-param"], tt.stored) {
-				t.Errorf("Stored config changed:\n%s", configStore.Data["test-param"])
+			// A failed check-in must not change the state
+			if !reflect.DeepEqual(stateStore.State, initial) {
+				t.Errorf("State changed: %+v", stateStore.State)
 			}
 		})
 	}

@@ -37,6 +37,7 @@ resource "aws_lambda_function" "http_handler" {
   environment {
     variables = {
       CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
+      STATE_TABLE_NAME      = aws_dynamodb_table.state.name
       SENDER_EMAIL          = local.sender_email
     }
   }
@@ -62,11 +63,11 @@ resource "aws_lambda_function" "scheduled_handler" {
 
   environment {
     variables = {
-      CONFIG_PARAMETER_NAME        = aws_ssm_parameter.config.name
-      DOCUMENT_ETAG_PARAMETER_NAME = aws_ssm_parameter.document_etag.name
-      SENDER_EMAIL                 = local.sender_email
-      DOCUMENT_BUCKET              = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY                 = local.document_key
+      CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
+      STATE_TABLE_NAME      = aws_dynamodb_table.state.name
+      SENDER_EMAIL          = local.sender_email
+      DOCUMENT_BUCKET       = aws_s3_bucket.document_bucket.id
+      DOCUMENT_KEY          = local.document_key
     }
   }
 
@@ -93,11 +94,11 @@ resource "aws_lambda_function" "docwatch_handler" {
 
   environment {
     variables = {
-      CONFIG_PARAMETER_NAME        = aws_ssm_parameter.config.name
-      DOCUMENT_ETAG_PARAMETER_NAME = aws_ssm_parameter.document_etag.name
-      SENDER_EMAIL                 = local.sender_email
-      DOCUMENT_BUCKET              = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY                 = local.document_key
+      CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
+      STATE_TABLE_NAME      = aws_dynamodb_table.state.name
+      SENDER_EMAIL          = local.sender_email
+      DOCUMENT_BUCKET       = aws_s3_bucket.document_bucket.id
+      DOCUMENT_KEY          = local.document_key
     }
   }
 

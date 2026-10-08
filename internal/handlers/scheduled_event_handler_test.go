@@ -1,9 +1,9 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -15,15 +15,14 @@ import (
 )
 
 const (
-	testParam     = "test-param"
-	testETagParam = "test-etag-param"
-	testBucket    = "test-bucket"
-	testKey       = "docs/document.pdf"
+	testParam  = "test-param"
+	testBucket = "test-bucket"
+	testKey    = "docs/document.pdf"
 )
 
 var testNow = time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 
-func newScheduledTest(t *testing.T, cfg *config.Config) (*ScheduledEventHandler, *mocks.MockConfigStore, *mocks.MockEmailSender) {
+func newScheduledTest(t *testing.T, cfg *config.Config, state config.State) (*ScheduledEventHandler, *mocks.MockStateStore, *mocks.MockEmailSender) {
 	t.Helper()
 
 	configStore := mocks.NewMockConfigStore()
@@ -32,41 +31,36 @@ func newScheduledTest(t *testing.T, cfg *config.Config) (*ScheduledEventHandler,
 		t.Fatalf("ToJSON failed: %v", err)
 	}
 	configStore.Data[testParam] = cfgData
-	configStore.Data[testETagParam] = []byte(domain.NoRecordedETag)
 
+	stateStore := mocks.NewMockStateStore(state)
 	documentStore := mocks.NewMockDocumentStore()
 	documentStore.SetDocument(testBucket, testKey, []byte("the document"))
 
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
-	watcher := NewDocumentWatcher(configStore, emailSender, service, testETagParam)
-	handler := NewScheduledEventHandler(configStore, documentStore, emailSender, service, watcher, testParam, testBucket, testKey)
+	watcher := NewDocumentWatcher(stateStore, emailSender, service)
+	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, service, watcher, testParam, testBucket, testKey)
 
-	return handler, configStore, emailSender
+	return handler, stateStore, emailSender
 }
 
-func storedConfig(t *testing.T, store *mocks.MockConfigStore) *config.Config {
-	t.Helper()
-	cfg, err := config.ParseConfig(store.Data[testParam])
-	if err != nil {
-		t.Fatalf("ParseConfig failed: %v", err)
-	}
-	return cfg
-}
-
-func triggeredConfig() *config.Config {
+func testConfig() *config.Config {
 	return &config.Config{
 		Owner:      "owner@example.com",
 		Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    testNow.AddDate(0, 0, -1),
 		APIKey:     "test-key",
 	}
 }
 
+// triggeredState is the state a day after the timeout passed
+func triggeredState() config.State {
+	return config.State{Timeout: testNow.AddDate(0, 0, -1)}
+}
+
 func TestScheduledHandlerSendsDocumentOnce(t *testing.T) {
-	handler, configStore, emailSender := newScheduledTest(t, triggeredConfig())
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
 
 	if err := handler.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle failed: %v", err)
@@ -82,9 +76,9 @@ func TestScheduledHandlerSendsDocumentOnce(t *testing.T) {
 		}
 	}
 
-	cfg := storedConfig(t, configStore)
-	if !slices.Equal(cfg.SentTo, []string{"recipient1@example.com", "recipient2@example.com"}) || !cfg.OwnerNotified {
-		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	state := stateStore.State
+	if !slices.Equal(state.SentTo, []string{"recipient1@example.com", "recipient2@example.com"}) || !state.OwnerNotified {
+		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", state.SentTo, state.OwnerNotified)
 	}
 
 	// The next daily run sends nothing
@@ -98,7 +92,7 @@ func TestScheduledHandlerSendsDocumentOnce(t *testing.T) {
 }
 
 func TestScheduledHandlerRetriesOnlyFailedRecipients(t *testing.T) {
-	handler, configStore, emailSender := newScheduledTest(t, triggeredConfig())
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["recipient1@example.com"] = sendErr
 
@@ -111,9 +105,9 @@ func TestScheduledHandlerRetriesOnlyFailedRecipients(t *testing.T) {
 		t.Fatalf("Expected 2 emails despite failure, got %d", len(emailSender.SentEmails))
 	}
 
-	cfg := storedConfig(t, configStore)
-	if !slices.Equal(cfg.SentTo, []string{"recipient2@example.com"}) || !cfg.OwnerNotified {
-		t.Errorf("Expected only successes recorded, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	state := stateStore.State
+	if !slices.Equal(state.SentTo, []string{"recipient2@example.com"}) || !state.OwnerNotified {
+		t.Errorf("Expected only successes recorded, got SentTo=%v OwnerNotified=%v", state.SentTo, state.OwnerNotified)
 	}
 
 	// Next run retries only the failed recipient
@@ -127,11 +121,14 @@ func TestScheduledHandlerRetriesOnlyFailedRecipients(t *testing.T) {
 	}
 }
 
-func TestScheduledHandlerWarningLeavesConfigUnchanged(t *testing.T) {
-	cfg := triggeredConfig()
-	cfg.Timeout = testNow.AddDate(0, 0, 5)
-	handler, configStore, emailSender := newScheduledTest(t, cfg)
-	before := bytes.Clone(configStore.Data[testParam])
+func TestScheduledHandlerWarningLeavesStateUnchanged(t *testing.T) {
+	// The document's ETag is already recorded, so nothing at all is written
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), config.State{Timeout: testNow.AddDate(0, 0, 5)})
+	if err := handler.Handle(context.Background()); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+	before := stateStore.State
+	emailSender.SentEmails = nil
 
 	if err := handler.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle failed: %v", err)
@@ -140,57 +137,61 @@ func TestScheduledHandlerWarningLeavesConfigUnchanged(t *testing.T) {
 	if len(emailSender.SentEmails) != 1 || emailSender.SentEmails[0].To != "owner@example.com" {
 		t.Errorf("Expected a single warning to the owner, got %+v", emailSender.SentEmails)
 	}
-	if !bytes.Equal(configStore.Data[testParam], before) {
-		t.Error("Expected config not to be rewritten for a warning")
+	if !reflect.DeepEqual(stateStore.State, before) {
+		t.Errorf("Expected state not to change for a warning, got %+v", stateStore.State)
 	}
 }
 
-// checkInDuringRunStore simulates the owner checking in while the scheduled
-// run is sending emails: every read after the first sees a new timeout.
-type checkInDuringRunStore struct {
-	*mocks.MockConfigStore
-	reads int
-}
+func TestScheduledHandlerStopsAfterConcurrentCheckIn(t *testing.T) {
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
 
-func (s *checkInDuringRunStore) GetConfig(ctx context.Context, parameterName string) ([]byte, error) {
-	s.reads++
-	if s.reads == 2 {
-		cfg, err := config.ParseConfig(s.Data[parameterName])
-		if err != nil {
-			return nil, err
-		}
-		cfg.Timeout = testNow.AddDate(0, 0, 30)
-		if s.Data[parameterName], err = cfg.ToJSON(); err != nil {
-			return nil, err
+	// The owner checks in while the first email is being sent
+	newTimeout := testNow.AddDate(0, 0, 30)
+	stateStore.BeforeUpdate = func() {
+		if stateStore.State.CheckIns == 0 && len(emailSender.SentEmails) == 1 {
+			_ = stateStore.CheckIn(context.Background(), newTimeout)
 		}
 	}
-	return s.MockConfigStore.GetConfig(ctx, parameterName)
-}
-
-func TestScheduledHandlerDoesNotOverwriteConcurrentCheckIn(t *testing.T) {
-	handler, configStore, _ := newScheduledTest(t, triggeredConfig())
-	store := &checkInDuringRunStore{MockConfigStore: configStore}
-	handler.configStore = store
 
 	if err := handler.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 
-	cfg := storedConfig(t, configStore)
-	if !cfg.Timeout.Equal(testNow.AddDate(0, 0, 30)) {
-		t.Errorf("Expected check-in timeout to survive, got %v", cfg.Timeout)
+	// The email already sent cannot be recalled, but nothing more is sent
+	if len(emailSender.SentEmails) != 1 {
+		t.Errorf("Expected sending to stop after the check-in, got %+v", emailSender.SentEmails)
 	}
-	if cfg.SentTo != nil || cfg.OwnerNotified {
-		t.Errorf("Expected no delivery state written over the check-in, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	state := stateStore.State
+	if !state.Timeout.Equal(newTimeout) || state.SentTo != nil || state.OwnerNotified {
+		t.Errorf("Expected the check-in to survive with no delivery state, got %+v", state)
+	}
+}
+
+func TestScheduledHandlerMergesConcurrentDeliveries(t *testing.T) {
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
+
+	// recipient2 fails here, but another run delivers to it concurrently
+	emailSender.FailFor["recipient2@example.com"] = errors.New("SES rejected address")
+	stateStore.BeforeUpdate = func() {
+		if len(emailSender.SentEmails) == 1 {
+			stateStore.BeforeUpdate = nil
+			_ = stateStore.RecordSent(context.Background(), 0, "recipient2@example.com")
+		}
+	}
+
+	if err := handler.Handle(context.Background()); err == nil {
+		t.Fatal("Expected the send failure to be reported")
+	}
+
+	if got := stateStore.State.SentTo; !slices.Contains(got, "recipient1@example.com") || !slices.Contains(got, "recipient2@example.com") {
+		t.Errorf("Expected both runs' deliveries recorded, got %v", got)
 	}
 }
 
 func TestScheduledHandlerDocumentMissingBeforeTimeout(t *testing.T) {
-	cfg := triggeredConfig()
-	cfg.Timeout = testNow.AddDate(0, 0, 20)
-	handler, configStore, emailSender := newScheduledTest(t, cfg)
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), config.State{Timeout: testNow.AddDate(0, 0, 20)})
 	handler.documentStore = mocks.NewMockDocumentStore()
-	before := bytes.Clone(configStore.Data[testParam])
+	before := stateStore.State
 
 	// The owner's email is the warning, so the run itself succeeds
 	if err := handler.Handle(context.Background()); err != nil {
@@ -201,13 +202,13 @@ func TestScheduledHandlerDocumentMissingBeforeTimeout(t *testing.T) {
 		!strings.Contains(emailSender.SentEmails[0].Body, "missing from s3://"+testBucket+"/"+testKey) {
 		t.Errorf("Expected a single missing-document warning to the owner, got %+v", emailSender.SentEmails)
 	}
-	if !bytes.Equal(configStore.Data[testParam], before) {
-		t.Error("Expected config not to be rewritten")
+	if !reflect.DeepEqual(stateStore.State, before) {
+		t.Errorf("Expected state not to change, got %+v", stateStore.State)
 	}
 }
 
 func TestScheduledHandlerDocumentMissingAfterTimeout(t *testing.T) {
-	handler, configStore, emailSender := newScheduledTest(t, triggeredConfig())
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
 	documentStore := mocks.NewMockDocumentStore()
 	handler.documentStore = documentStore
 
@@ -220,8 +221,8 @@ func TestScheduledHandlerDocumentMissingAfterTimeout(t *testing.T) {
 		emailSender.SentEmails[0].Subject != "Deadman's Handle Triggered - Document Missing" {
 		t.Errorf("Expected a single delivery-blocked notice to the owner, got %+v", emailSender.SentEmails)
 	}
-	if cfg := storedConfig(t, configStore); cfg.SentTo != nil || cfg.OwnerNotified {
-		t.Errorf("Expected no delivery state, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	if state := stateStore.State; state.SentTo != nil || state.OwnerNotified {
+		t.Errorf("Expected no delivery state, got SentTo=%v OwnerNotified=%v", state.SentTo, state.OwnerNotified)
 	}
 
 	// Once the document is uploaded, the next run delivers it as normal
@@ -233,7 +234,7 @@ func TestScheduledHandlerDocumentMissingAfterTimeout(t *testing.T) {
 	if len(emailSender.SentEmails) != 3 {
 		t.Errorf("Expected 2 document emails and 1 owner notice after upload, got %+v", emailSender.SentEmails)
 	}
-	if cfg := storedConfig(t, configStore); len(cfg.SentTo) != 2 || !cfg.OwnerNotified {
-		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", cfg.SentTo, cfg.OwnerNotified)
+	if state := stateStore.State; len(state.SentTo) != 2 || !state.OwnerNotified {
+		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", state.SentTo, state.OwnerNotified)
 	}
 }

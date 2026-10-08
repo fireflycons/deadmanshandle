@@ -10,7 +10,6 @@ const validJSON = `{
 	"recipients": ["a@example.com", "b@example.com"],
 	"resetDays": 30,
 	"warnDays": 7,
-	"timeout": "2030-01-01T00:00:00Z",
 	"apiKey": "key"
 }`
 
@@ -21,9 +20,6 @@ func TestParseConfigValid(t *testing.T) {
 	}
 	if cfg.Owner != "owner@example.com" || len(cfg.Recipients) != 2 || cfg.ResetDays != 30 || cfg.WarnDays != 7 || cfg.APIKey != "key" {
 		t.Errorf("Unexpected config: %+v", cfg)
-	}
-	if got := cfg.Timeout.Format("2006-01-02T15:04:05Z07:00"); got != "2030-01-01T00:00:00Z" {
-		t.Errorf("Unexpected timeout %s", got)
 	}
 }
 
@@ -40,8 +36,6 @@ func TestParseConfigInvalid(t *testing.T) {
 		{"zero resetDays", [2]string{`"resetDays": 30`, `"resetDays": 0`}, "resetDays must be greater than 0"},
 		{"negative warnDays", [2]string{`"warnDays": 7`, `"warnDays": -1`}, "warnDays must be"},
 		{"warnDays equals resetDays", [2]string{`"warnDays": 7`, `"warnDays": 30`}, "warnDays must be"},
-		{"missing timeout", [2]string{`"timeout": "2030-01-01T00:00:00Z",`, ``}, "timeout is missing"},
-		{"zero timeout", [2]string{`"2030-01-01T00:00:00Z"`, `"0001-01-01T00:00:00Z"`}, "timeout is missing"},
 		{"empty apiKey", [2]string{`"key"`, `""`}, "apiKey is empty"},
 		{"bad JSON", [2]string{`{`, `[`}, "invalid character"},
 		{"empty data", [2]string{validJSON, ``}, "unexpected end of JSON input"},
@@ -69,7 +63,7 @@ func TestValidateReportsAllProblems(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an error")
 	}
-	for _, want := range []string{"owner", "recipients", "resetDays", "timeout", "apiKey"} {
+	for _, want := range []string{"owner", "recipients", "resetDays", "apiKey"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Expected error to mention %s, got %q", want, err)
 		}

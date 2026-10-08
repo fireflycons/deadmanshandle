@@ -14,6 +14,8 @@ deadmanshandle/
 ├── internal/                             # Application packages
 │   ├── adapters/                         # AWS service implementations
 │   │   ├── ssm_config_store.go           # Parameter Store adapter
+│   │   ├── dynamodb_state_store.go       # DynamoDB state adapter
+│   │   ├── dynamodb_state_store_test.go  # Expression attribute name tests
 │   │   ├── s3_document_store.go          # S3 storage adapter
 │   │   ├── ses_email_sender.go           # SES email adapter (builds the MIME message)
 │   │   ├── ses_email_sender_test.go      # MIME message tests
@@ -49,7 +51,8 @@ deadmanshandle/
 │   ├── lambda.tf                         # Lambda functions and log groups
 │   ├── api_gateway.tf                    # HTTP API Gateway
 │   ├── s3.tf                             # S3 bucket configuration
-│   ├── parameter_store.tf                # SSM parameters and seed-config checks
+│   ├── parameter_store.tf                # SSM parameter and seed-config checks
+│   ├── dynamodb.tf                       # State table and its seeded item
 │   ├── eventbridge.tf                    # EventBridge rules and DLQ
 │   ├── ses.tf                            # SES domain identity and DKIM records
 │   ├── alarms.tf                         # SNS topic and CloudWatch alarms
@@ -84,33 +87,39 @@ deadmanshandle/
 - **http**: HTTP API Gateway Lambda handler
   - Handles check-in requests
   - Validates API keys
-  - Updates configuration timeout
+  - Sets the timeout in the DynamoDB state
 
 - **scheduled**: EventBridge scheduled event handler
   - Processes daily checks
   - Sends warning emails
   - Distributes documents on timeout
 
+- **docwatch**: S3 upload (EventBridge) handler
+  - Reports changes to the document's content to the owner
+
 Each `main.go` sets up JSON logging, creates the AWS clients and adapters once
 at init, and starts the Lambda runtime.
 
 ### `internal/adapters/` - AWS Service Adapters
 Implements the port interfaces using AWS SDK:
-- **SSMConfigStore**: Reads/writes the configuration as a SecureString parameter
+- **SSMConfigStore**: Reads the configuration from a SecureString parameter
+- **DynamoDBStateStore**: Reads and atomically updates the state item; the
+  updates that record deliveries or an ETag are conditional, so concurrent
+  Lambdas cannot lose each other's writes
 - **S3DocumentStore**: Retrieves documents from S3
 - **SESEmailSender**: Sends emails via SES, with the document as an attachment
 - **SimpleAPIKeyValidator**: Validates API keys with constant-time comparison
 
 ### `internal/config/` - Configuration Model
-- Defines the Config struct matching Parameter Store JSON, including the
-  delivery state (`sentTo`, `ownerNotified`)
-- Parses, validates (`Config.Validate`) and serializes it
+- Defines the Config struct matching Parameter Store JSON, and the State
+  struct for the timeout, delivery state and recorded ETag in DynamoDB
+- Parses, validates (`Config.Validate`) and serializes the config
 
 ### `internal/domain/` - Core Business Logic
 - **DeadmansHandleService**: Main service encapsulating all business logic
-  - `CheckIn()`: Process owner check-in, set timeout to now + `resetDays`
+  - `CheckIn()`: Process owner check-in, returning now + `resetDays`
   - `ProcessScheduledEvent()`: Determine what emails to send
-  - `RecordSent()`: Record a successful send in the delivery state
+  - `DocumentChanged()`: Decide whether a document's ETag is a change to report
 
 - Tests using time injection for deterministic testing
 
@@ -118,18 +127,25 @@ Implements the port interfaces using AWS SDK:
 - **HTTPHandler**: Processes API Gateway (payload 2.0) requests
   - Validates API key header
   - Calls domain service
-  - Updates configuration
+  - Sets the new timeout in the state
   - Returns JSON response
 
 - **ScheduledEventHandler**: Processes EventBridge events
   - Fetches configuration
   - Calls domain service
   - Retrieves document if needed
-  - Sends emails, then saves the delivery state
+  - Sends emails, recording each delivery as it succeeds; stops if the owner
+    checks in during the run
+
+- **DocumentWatcher** and **DocumentWatchHandler**: Compare the document's
+  ETag with the recorded one, record it with a conditional swap, and email
+  the owner of a change
 
 ### `internal/mocks/` - Testing Mocks
 Mock implementations of all port interfaces for unit testing:
 - **MockConfigStore**: In-memory configuration storage, with injectable errors
+- **MockStateStore**: In-memory state with the same conditions as DynamoDB,
+  and a hook to simulate a concurrent writer
 - **MockDocumentStore**: In-memory document storage
 - **MockEmailSender**: Captures sent emails, and can fail for chosen recipients
 - **MockAPIKeyValidator**: Plain comparison of the provided and expected keys
@@ -239,10 +255,11 @@ make clean      # Removes artifacts
 ## Environment Variables
 
 ### Runtime (Lambda)
-- `CONFIG_PARAMETER_NAME`: Parameter Store path (both functions)
-- `SENDER_EMAIL`: Sender address, in the SES-verified domain (scheduled)
-- `DOCUMENT_BUCKET`: S3 bucket name (scheduled)
-- `DOCUMENT_KEY`: S3 object key (scheduled)
+- `CONFIG_PARAMETER_NAME`: Parameter Store path (all functions)
+- `STATE_TABLE_NAME`: DynamoDB state table (all functions)
+- `SENDER_EMAIL`: Sender address, in the SES-verified domain
+- `DOCUMENT_BUCKET`: S3 bucket name (scheduled and docwatch)
+- `DOCUMENT_KEY`: S3 object key (scheduled and docwatch)
 
 ### Build/Deployment
 - `GOOS`: Operating system (linux for Lambda)

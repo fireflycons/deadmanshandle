@@ -4,13 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"slices"
+	"time"
 
+	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 // Compile-time checks that the mocks implement the ports
 var (
 	_ ports.ConfigStore     = (*MockConfigStore)(nil)
+	_ ports.StateStore      = (*MockStateStore)(nil)
 	_ ports.DocumentStore   = (*MockDocumentStore)(nil)
 	_ ports.EmailSender     = (*MockEmailSender)(nil)
 	_ ports.APIKeyValidator = (*MockAPIKeyValidator)(nil)
@@ -20,7 +24,6 @@ var (
 type MockConfigStore struct {
 	Data   map[string][]byte
 	GetErr error // Returned by GetConfig when set
-	SetErr error // Returned by SetConfig when set
 }
 
 func NewMockConfigStore() *MockConfigStore {
@@ -36,11 +39,89 @@ func (m *MockConfigStore) GetConfig(ctx context.Context, parameterName string) (
 	return m.Data[parameterName], nil
 }
 
-func (m *MockConfigStore) SetConfig(ctx context.Context, parameterName string, data []byte) error {
-	if m.SetErr != nil {
-		return m.SetErr
+// MockStateStore is a mock implementation of StateStore, applying the same
+// conditions as the DynamoDB adapter
+type MockStateStore struct {
+	State      config.State
+	GetErr     error   // Returned by GetState when set
+	CheckInErr error   // Returned by CheckIn when set
+	RecordErr  error   // Returned by RecordSent and RecordOwnerNotified when set
+	SwapErrs   []error // Returned by successive SwapDocumentETag calls, if any remain
+	// BeforeUpdate, when set, runs before each conditional update, to
+	// simulate another Lambda writing concurrently
+	BeforeUpdate func()
+}
+
+func NewMockStateStore(state config.State) *MockStateStore {
+	return &MockStateStore{State: state}
+}
+
+func (m *MockStateStore) GetState(ctx context.Context) (*config.State, error) {
+	if m.GetErr != nil {
+		return nil, m.GetErr
 	}
-	m.Data[parameterName] = data
+	state := m.State
+	state.SentTo = slices.Clone(m.State.SentTo)
+	return &state, nil
+}
+
+func (m *MockStateStore) CheckIn(ctx context.Context, timeout time.Time) error {
+	if m.CheckInErr != nil {
+		return m.CheckInErr
+	}
+	m.State.Timeout = timeout
+	m.State.SentTo = nil
+	m.State.OwnerNotified = false
+	m.State.CheckIns++
+	return nil
+}
+
+func (m *MockStateStore) RecordSent(ctx context.Context, checkIns int64, recipient string) error {
+	if err := m.recordable(checkIns); err != nil {
+		return err
+	}
+	if !slices.Contains(m.State.SentTo, recipient) {
+		m.State.SentTo = append(m.State.SentTo, recipient)
+	}
+	return nil
+}
+
+func (m *MockStateStore) RecordOwnerNotified(ctx context.Context, checkIns int64) error {
+	if err := m.recordable(checkIns); err != nil {
+		return err
+	}
+	m.State.OwnerNotified = true
+	return nil
+}
+
+func (m *MockStateStore) SwapDocumentETag(ctx context.Context, previous, current string) error {
+	if m.BeforeUpdate != nil {
+		m.BeforeUpdate()
+	}
+	if len(m.SwapErrs) > 0 {
+		err := m.SwapErrs[0]
+		m.SwapErrs = m.SwapErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	if m.State.DocumentETag != previous {
+		return ports.ErrConditionFailed
+	}
+	m.State.DocumentETag = current
+	return nil
+}
+
+func (m *MockStateStore) recordable(checkIns int64) error {
+	if m.BeforeUpdate != nil {
+		m.BeforeUpdate()
+	}
+	if m.RecordErr != nil {
+		return m.RecordErr
+	}
+	if m.State.CheckIns != checkIns {
+		return ports.ErrConditionFailed
+	}
 	return nil
 }
 

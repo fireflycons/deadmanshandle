@@ -172,9 +172,11 @@ aws ssm put-parameter \
   --type SecureString
 ```
 
-The `deployment` section is ignored by the Lambdas and dropped from the
-parameter on their next save. To change it, edit `config.json` and run
-`terraform apply`.
+The Lambdas ignore the `deployment` section and `timeout`. To change the
+`deployment` section, edit `config.json` and run `terraform apply`; the
+timeout is changed by checking in.
+If the API is unavailable, you can check in with the AWS CLI; see
+"Checking in without the API" in DEPLOYMENT.md.
 
 ## Running Tests Locally
 
@@ -226,7 +228,8 @@ versioned) first, or `terraform destroy` fails.
   Owner ── POST /checkin ──► API Gateway ──► HTTP Lambda ─────────┐
                                                                   ▼
                                                    Parameter Store (config,
-                                                   timeout, API key)
+                                                   API key); DynamoDB (timeout,
+                                                   delivery state)
                                                                   ▲
   EventBridge (daily) ─────────────────────► Scheduled Lambda ────┘
                                                 │            │

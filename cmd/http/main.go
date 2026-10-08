@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
@@ -30,9 +31,11 @@ func init() {
 
 	// Initialize AWS clients
 	ssmClient := ssm.NewFromConfig(cfg)
+	dynamoClient := dynamodb.NewFromConfig(cfg)
 
 	// Initialize adapters
 	configStore := adapters.NewSSMConfigStore(ssmClient)
+	stateStore := adapters.NewDynamoDBStateStore(dynamoClient, os.Getenv("STATE_TABLE_NAME"))
 	keyValidator := adapters.NewSimpleAPIKeyValidator()
 
 	// Initialize service
@@ -40,7 +43,7 @@ func init() {
 
 	// Initialize handler
 	paramName := os.Getenv("CONFIG_PARAMETER_NAME")
-	httpHandler = handlers.NewHTTPHandler(configStore, service, keyValidator, paramName)
+	httpHandler = handlers.NewHTTPHandler(configStore, stateStore, service, keyValidator, paramName)
 }
 
 // HandleHTTPRequest handles API Gateway requests

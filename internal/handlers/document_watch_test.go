@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
 	"github.com/fireflycons/deadmanshandle/internal/mocks"
 )
@@ -14,24 +15,24 @@ const changedSubject = "Deadman's Handle Document Changed"
 
 var testOrigin = &domain.ChangeOrigin{Requester: "123456789012", SourceIP: "192.0.2.1"}
 
-func newDocumentWatchTest(t *testing.T) (*DocumentWatchHandler, *mocks.MockConfigStore, *mocks.MockDocumentStore, *mocks.MockEmailSender) {
+func newDocumentWatchTest(t *testing.T) (*DocumentWatchHandler, *mocks.MockStateStore, *mocks.MockDocumentStore, *mocks.MockEmailSender) {
 	t.Helper()
 
 	configStore := mocks.NewMockConfigStore()
-	cfgData, err := triggeredConfig().ToJSON()
+	cfgData, err := testConfig().ToJSON()
 	if err != nil {
 		t.Fatalf("ToJSON failed: %v", err)
 	}
 	configStore.Data[testParam] = cfgData
-	configStore.Data[testETagParam] = []byte(domain.NoRecordedETag)
 
+	stateStore := mocks.NewMockStateStore(config.State{Timeout: testNow.AddDate(0, 0, 10)})
 	documentStore := mocks.NewMockDocumentStore()
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
-	watcher := NewDocumentWatcher(configStore, emailSender, service, testETagParam)
+	watcher := NewDocumentWatcher(stateStore, emailSender, service)
 	handler := NewDocumentWatchHandler(configStore, documentStore, watcher, testParam, testBucket, testKey)
 
-	return handler, configStore, documentStore, emailSender
+	return handler, stateStore, documentStore, emailSender
 }
 
 // changeNotices returns the document change notices sent
@@ -98,21 +99,21 @@ func TestDocumentWatchHandler(t *testing.T) {
 }
 
 func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
-	handler, configStore, documentStore, emailSender := newDocumentWatchTest(t)
+	handler, stateStore, documentStore, emailSender := newDocumentWatchTest(t)
 	documentStore.SetDocument(testBucket, testKey, []byte("v1"))
 	if err := handler.Handle(context.Background(), testOrigin); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
-	recorded := string(configStore.Data[testETagParam])
+	recorded := stateStore.State.DocumentETag
 
-	// The notice fails, so the new ETag is not recorded
+	// The notice fails, so the new ETag is not kept
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["owner@example.com"] = sendErr
 	documentStore.SetDocument(testBucket, testKey, []byte("v2"))
 	if err := handler.Handle(context.Background(), testOrigin); !errors.Is(err, sendErr) {
 		t.Fatalf("Expected the send failure, got %v", err)
 	}
-	if got := string(configStore.Data[testETagParam]); got != recorded {
+	if got := stateStore.State.DocumentETag; got != recorded {
 		t.Errorf("Expected recorded ETag %s to be kept, got %s", recorded, got)
 	}
 
@@ -128,10 +129,8 @@ func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 
 func TestScheduledHandlerReportsDocumentChange(t *testing.T) {
 	// Before the timeout, so a missing check-in would trigger nothing else
-	cfg := triggeredConfig()
-	cfg.Timeout = testNow.AddDate(0, 0, 20)
-	handler, configStore, emailSender := newScheduledTest(t, cfg)
-	configStore.Data[testETagParam] = []byte(`"recorded before the change"`)
+	handler, _, emailSender := newScheduledTest(t, testConfig(),
+		config.State{Timeout: testNow.AddDate(0, 0, 20), DocumentETag: `"recorded before the change"`})
 
 	if err := handler.Handle(context.Background()); err != nil {
 		t.Fatalf("Handle failed: %v", err)
@@ -144,8 +143,9 @@ func TestScheduledHandlerReportsDocumentChange(t *testing.T) {
 }
 
 func TestScheduledHandlerSendsDespiteFailedChangeCheck(t *testing.T) {
-	handler, configStore, emailSender := newScheduledTest(t, triggeredConfig())
-	configStore.Data[testETagParam] = []byte(`"recorded before the change"`)
+	state := triggeredState()
+	state.DocumentETag = `"recorded before the change"`
+	handler, _, emailSender := newScheduledTest(t, testConfig(), state)
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["owner@example.com"] = sendErr
 
@@ -155,5 +155,43 @@ func TestScheduledHandlerSendsDespiteFailedChangeCheck(t *testing.T) {
 	}
 	if len(emailSender.SentEmails) != 2 {
 		t.Errorf("Expected the document sent to both recipients, got %+v", emailSender.SentEmails)
+	}
+}
+
+func TestDocumentWatcherConcurrentChecks(t *testing.T) {
+	// Another invocation records an ETag between this one's read and swap
+	tests := []struct {
+		name        string
+		ours        string // ETag this invocation sees
+		theirs      string // ETag the other invocation records first
+		wantNotices int
+	}{
+		{"same change is reported once, by the other", `"v2"`, `"v2"`, 0},
+		{"a later change is still reported", `"v3"`, `"v2"`, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stateStore := mocks.NewMockStateStore(config.State{Timeout: testNow.AddDate(0, 0, 10), DocumentETag: `"v1"`})
+			stateStore.BeforeUpdate = func() {
+				stateStore.BeforeUpdate = nil
+				if err := stateStore.SwapDocumentETag(context.Background(), `"v1"`, tt.theirs); err != nil {
+					t.Fatalf("Concurrent swap failed: %v", err)
+				}
+			}
+			emailSender := mocks.NewMockEmailSender()
+			watcher := NewDocumentWatcher(stateStore, emailSender, domain.NewDeadmansHandleServiceWithTime(testNow))
+			doc := domain.Document{Location: "s3://" + testBucket + "/" + testKey, Available: true, ETag: tt.ours}
+
+			if err := watcher.Check(context.Background(), testConfig(), doc, testOrigin); err != nil {
+				t.Fatalf("Check failed: %v", err)
+			}
+
+			if got := len(changeNotices(emailSender)); got != tt.wantNotices {
+				t.Errorf("Expected %d notices, got %d", tt.wantNotices, got)
+			}
+			if stateStore.State.DocumentETag != tt.ours {
+				t.Errorf("Expected recorded ETag %s, got %s", tt.ours, stateStore.State.DocumentETag)
+			}
+		})
 	}
 }

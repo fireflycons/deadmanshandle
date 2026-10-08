@@ -32,12 +32,20 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect = "Allow"
         Action = [
-          "ssm:GetParameter",
-          "ssm:PutParameter"
+          "ssm:GetParameter"
         ]
         Resource = [
-          aws_ssm_parameter.config.arn,
-          aws_ssm_parameter.document_etag.arn
+          aws_ssm_parameter.config.arn
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem"
+        ]
+        Resource = [
+          aws_dynamodb_table.state.arn
         ]
       },
       {

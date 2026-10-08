@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 // SSMConfigStore implements the ConfigStore interface using AWS Parameter Store
@@ -35,21 +34,6 @@ func (s *SSMConfigStore) GetConfig(ctx context.Context, parameterName string) ([
 	}
 
 	return []byte(*output.Parameter.Value), nil
-}
-
-// SetConfig stores configuration in Parameter Store
-func (s *SSMConfigStore) SetConfig(ctx context.Context, parameterName string, data []byte) error {
-	_, err := s.client.PutParameter(ctx, &ssm.PutParameterInput{
-		Name:      &parameterName,
-		Value:     stringPtr(string(data)),
-		Overwrite: boolPtr(true),
-		Type:      types.ParameterTypeSecureString,
-	})
-	return err
-}
-
-func stringPtr(s string) *string {
-	return &s
 }
 
 func boolPtr(b bool) *bool {

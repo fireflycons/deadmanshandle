@@ -7,19 +7,32 @@ import (
 	"time"
 )
 
-// Config represents the application configuration stored in Parameter Store
+// Config represents the application configuration stored in Parameter Store.
+// The Lambdas only read it; what changes at run time is in State.
 type Config struct {
-	Owner      string    `json:"owner"`
-	Recipients []string  `json:"recipients"`
-	ResetDays  int       `json:"resetDays"`
-	WarnDays   int       `json:"warnDays"`
-	Timeout    time.Time `json:"timeout"`
-	APIKey     string    `json:"apiKey"`
+	Owner      string   `json:"owner"`
+	Recipients []string `json:"recipients"`
+	ResetDays  int      `json:"resetDays"`
+	WarnDays   int      `json:"warnDays"`
+	APIKey     string   `json:"apiKey"`
+}
+
+// State is the handle's mutable state, kept in DynamoDB so that concurrent
+// Lambdas can update it atomically
+type State struct {
+	Timeout time.Time
+	// Incremented by each check-in. Delivery state is only recorded if it is
+	// unchanged since the run read it, so a check-in during a run wins.
+	CheckIns int64
 
 	// Delivery state, written once the timeout has passed so that later
 	// scheduled runs do not resend. Both are cleared by a check-in.
-	SentTo        []string `json:"sentTo,omitempty"`        // Recipients already sent the document
-	OwnerNotified bool     `json:"ownerNotified,omitempty"` // Owner told that the document was sent
+	SentTo        []string // Recipients already sent the document
+	OwnerNotified bool     // Owner told that the document was sent
+
+	// ETag of the document last seen, so a change of content can be
+	// reported. Empty until a document has been seen.
+	DocumentETag string
 }
 
 // ParseConfig parses and validates JSON configuration
@@ -56,9 +69,6 @@ func (c *Config) Validate() error {
 	}
 	if c.WarnDays < 0 || c.WarnDays >= c.ResetDays {
 		errs = append(errs, errors.New("warnDays must be at least 0 and less than resetDays"))
-	}
-	if c.Timeout.IsZero() {
-		errs = append(errs, errors.New("timeout is missing"))
 	}
 	if strings.TrimSpace(c.APIKey) == "" {
 		errs = append(errs, errors.New("apiKey is empty"))

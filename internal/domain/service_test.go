@@ -21,18 +21,12 @@ func TestCheckIn(t *testing.T) {
 		Recipients: []string{"recipient1@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    now.AddDate(0, 0, -5), // 5 days ago
 		APIKey:     "test-key",
 	}
 
-	newCfg, err := service.CheckIn(cfg)
-	if err != nil {
-		t.Fatalf("CheckIn failed: %v", err)
-	}
-
 	expectedTimeout := now.AddDate(0, 0, 30)
-	if !newCfg.Timeout.Equal(expectedTimeout) {
-		t.Errorf("Expected timeout %v, got %v", expectedTimeout, newCfg.Timeout)
+	if got := service.CheckIn(cfg); !got.Equal(expectedTimeout) {
+		t.Errorf("Expected timeout %v, got %v", expectedTimeout, got)
 	}
 }
 
@@ -45,11 +39,11 @@ func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 		Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    now.AddDate(0, 0, -1), // Timeout is past
 		APIKey:     "test-key",
 	}
+	state := &config.State{Timeout: now.AddDate(0, 0, -1)} // Timeout is past
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, state, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -87,14 +81,16 @@ func TestProcessScheduledEventSkipsCompletedDeliveries(t *testing.T) {
 	service := NewDeadmansHandleServiceWithTime(now)
 
 	cfg := &config.Config{
-		Owner:         "owner@example.com",
-		Recipients:    []string{"recipient1@example.com", "recipient2@example.com"},
+		Owner:      "owner@example.com",
+		Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
+	}
+	state := &config.State{
 		Timeout:       now.AddDate(0, 0, -1),
 		SentTo:        []string{"recipient1@example.com"},
 		OwnerNotified: true,
 	}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, state, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -104,59 +100,13 @@ func TestProcessScheduledEventSkipsCompletedDeliveries(t *testing.T) {
 	}
 
 	// Everything delivered: nothing more to send
-	cfg.SentTo = append(cfg.SentTo, "recipient2@example.com")
-	emails, err = service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
+	state.SentTo = append(state.SentTo, "recipient2@example.com")
+	emails, err = service.ProcessScheduledEvent(t.Context(), cfg, state, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
 	if len(emails) != 0 {
 		t.Errorf("Expected no emails once all delivered, got %+v", emails)
-	}
-}
-
-func TestRecordSent(t *testing.T) {
-	service := NewDeadmansHandleServiceWithTime(time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC))
-	cfg := &config.Config{}
-
-	document := EmailAction{Kind: EmailDocument, To: "recipient@example.com"}
-	if !service.RecordSent(cfg, document) {
-		t.Error("Expected first document send to change config")
-	}
-	if service.RecordSent(cfg, document) {
-		t.Error("Expected repeated document send not to change config")
-	}
-	if len(cfg.SentTo) != 1 || cfg.SentTo[0] != "recipient@example.com" {
-		t.Errorf("Expected SentTo to hold the recipient once, got %v", cfg.SentTo)
-	}
-
-	notice := EmailAction{Kind: EmailTriggerNotice, To: "owner@example.com"}
-	if !service.RecordSent(cfg, notice) || !cfg.OwnerNotified {
-		t.Error("Expected trigger notice to set OwnerNotified")
-	}
-
-	if service.RecordSent(cfg, EmailAction{Kind: EmailWarning, To: "owner@example.com"}) {
-		t.Error("Expected warning not to change config")
-	}
-}
-
-func TestCheckInClearsDeliveryState(t *testing.T) {
-	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
-	service := NewDeadmansHandleServiceWithTime(now)
-
-	cfg := &config.Config{
-		ResetDays:     30,
-		Timeout:       now.AddDate(0, 0, -1),
-		SentTo:        []string{"recipient@example.com"},
-		OwnerNotified: true,
-	}
-
-	newCfg, err := service.CheckIn(cfg)
-	if err != nil {
-		t.Fatalf("CheckIn failed: %v", err)
-	}
-
-	if newCfg.SentTo != nil || newCfg.OwnerNotified {
-		t.Errorf("Expected delivery state cleared, got SentTo=%v OwnerNotified=%v", newCfg.SentTo, newCfg.OwnerNotified)
 	}
 }
 
@@ -170,11 +120,11 @@ func TestProcessScheduledEventWarning(t *testing.T) {
 		Recipients: []string{"recipient1@example.com"},
 		ResetDays:  30,
 		WarnDays:   7,
-		Timeout:    now.AddDate(0, 0, 5),
 		APIKey:     "test-key",
 	}
+	state := &config.State{Timeout: now.AddDate(0, 0, 5)}
 
-	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, testDocument)
+	emails, err := service.ProcessScheduledEvent(t.Context(), cfg, state, testDocument)
 	if err != nil {
 		t.Fatalf("ProcessScheduledEvent failed: %v", err)
 	}
@@ -249,17 +199,15 @@ func TestProcessScheduledEventDocumentMissing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Owner:         "owner@example.com",
-				Recipients:    []string{"recipient1@example.com", "recipient2@example.com"},
-				ResetDays:     30,
-				WarnDays:      7,
-				Timeout:       tt.timeout,
-				APIKey:        "test-key",
-				SentTo:        tt.sentTo,
-				OwnerNotified: tt.ownerNotified,
+				Owner:      "owner@example.com",
+				Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
+				ResetDays:  30,
+				WarnDays:   7,
+				APIKey:     "test-key",
 			}
+			state := &config.State{Timeout: tt.timeout, SentTo: tt.sentTo, OwnerNotified: tt.ownerNotified}
 
-			emails, err := NewDeadmansHandleServiceWithTime(now).ProcessScheduledEvent(t.Context(), cfg, missing)
+			emails, err := NewDeadmansHandleServiceWithTime(now).ProcessScheduledEvent(t.Context(), cfg, state, missing)
 			if err != nil {
 				t.Fatalf("ProcessScheduledEvent failed: %v", err)
 			}
@@ -292,11 +240,11 @@ func TestDocumentChanged(t *testing.T) {
 		doc          Document
 		notify, save bool
 	}{
-		{"first document is recorded silently", NoRecordedETag, present, false, true},
+		{"first document is recorded silently", "", present, false, true},
 		{"same content", `"new"`, present, false, false},
 		{"changed content", `"old"`, present, true, true},
 		{"missing keeps the recorded ETag", `"old"`, missing, false, false},
-		{"missing before any document", NoRecordedETag, missing, false, false},
+		{"missing before any document", "", missing, false, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -311,7 +259,8 @@ func TestDocumentChanged(t *testing.T) {
 func TestDocumentChangedEmail(t *testing.T) {
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 	service := NewDeadmansHandleServiceWithTime(now)
-	cfg := &config.Config{Owner: "owner@example.com", Timeout: now.AddDate(0, 0, 10)}
+	cfg := &config.Config{Owner: "owner@example.com"}
+	state := &config.State{Timeout: now.AddDate(0, 0, 10)}
 
 	tests := []struct {
 		name       string
@@ -323,7 +272,7 @@ func TestDocumentChangedEmail(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			email := service.DocumentChangedEmail(cfg, testDocument, tt.origin)
+			email := service.DocumentChangedEmail(cfg, state, testDocument, tt.origin)
 			if email.To != "owner@example.com" || email.Kind != EmailDocumentChanged || email.AttachDocument() {
 				t.Errorf("Expected an owner notice without attachment, got %+v", email)
 			}

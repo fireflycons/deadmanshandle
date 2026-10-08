@@ -15,6 +15,7 @@ import (
 // HTTPHandler handles HTTP API Gateway requests
 type HTTPHandler struct {
 	configStore  ports.ConfigStore
+	stateStore   ports.StateStore
 	service      *domain.DeadmansHandleService
 	keyValidator ports.APIKeyValidator
 	paramName    string
@@ -23,12 +24,14 @@ type HTTPHandler struct {
 // NewHTTPHandler creates a new HTTP handler
 func NewHTTPHandler(
 	configStore ports.ConfigStore,
+	stateStore ports.StateStore,
 	service *domain.DeadmansHandleService,
 	keyValidator ports.APIKeyValidator,
 	parameterName string,
 ) *HTTPHandler {
 	return &HTTPHandler{
 		configStore:  configStore,
+		stateStore:   stateStore,
 		service:      service,
 		keyValidator: keyValidator,
 		paramName:    parameterName,
@@ -72,31 +75,20 @@ func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTT
 		return h.response(401, "Invalid API key"), nil
 	}
 
-	// Process check-in
-	newCfg, err := h.service.CheckIn(cfg)
-	if err != nil {
-		log.Error("Check-in failed: processing check-in", "error", err)
-		return h.response(500, "Failed to process check-in"), nil
+	// Process check-in. Setting the timeout also clears the delivery state,
+	// atomically, so a scheduled run cannot overwrite the check-in.
+	newTimeout := h.service.CheckIn(cfg)
+	if err := h.stateStore.CheckIn(ctx, newTimeout); err != nil {
+		log.Error("Check-in failed: saving the new timeout", "error", err)
+		return h.response(500, "Failed to save check-in"), nil
 	}
 
-	// Save updated configuration
-	newConfigData, err := newCfg.ToJSON()
-	if err != nil {
-		log.Error("Check-in failed: serializing configuration", "error", err)
-		return h.response(500, "Failed to serialize configuration"), nil
-	}
-
-	if err := h.configStore.SetConfig(ctx, h.paramName, newConfigData); err != nil {
-		log.Error("Check-in failed: saving configuration", "error", err)
-		return h.response(500, "Failed to save configuration"), nil
-	}
-
-	log.Info("Check-in successful", "newTimeout", newCfg.Timeout)
+	log.Info("Check-in successful", "newTimeout", newTimeout)
 
 	resp := HTTPResponse{
 		StatusCode: 200,
 		Message:    "Check-in successful",
-		NewTimeout: newCfg.Timeout.Format(time.RFC3339),
+		NewTimeout: newTimeout.Format(time.RFC3339),
 	}
 
 	respBody, _ := json.Marshal(resp)

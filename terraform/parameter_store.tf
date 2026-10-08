@@ -6,6 +6,7 @@ locals {
 
   # The deployment section holds infrastructure settings. Unlike the rest of
   # the file, it is read on every plan, and it is not stored in the parameter.
+  # Nor is the timeout, which seeds the state item in dynamodb.tf.
   deployment           = try(local.seed_config.deployment, {})
   sender_email         = try(local.deployment.senderEmail, "")
   document_bucket_name = try(local.deployment.documentBucket, "")
@@ -15,11 +16,11 @@ locals {
 resource "aws_ssm_parameter" "config" {
   name  = "/${var.application_name}/config"
   type  = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
-  value = jsonencode({ for k, v in local.seed_config : k => v if k != "deployment" })
+  value = jsonencode({ for k, v in local.seed_config : k => v if !contains(["deployment", "timeout", "sentTo", "ownerNotified"], k) })
 
-  # The config file only seeds the parameter. After that the Lambda owns the
-  # value (each check-in rewrites the timeout), so later applies must not
-  # reset it from the file. To re-seed deliberately, run:
+  # The config file only seeds the parameter; after that it is updated with
+  # the AWS CLI (see DEPLOYMENT.md), so later applies must not reset it from
+  # the file. The Lambdas only read it. To re-seed deliberately, run:
   #   terraform apply -replace=aws_ssm_parameter.config
   lifecycle {
     ignore_changes = [value]
@@ -41,10 +42,6 @@ resource "aws_ssm_parameter" "config" {
       error_message = "Config: warnDays must be at least 0 and less than resetDays."
     }
     precondition {
-      condition     = try(timecmp(local.seed_config.timeout, "0001-01-01T00:00:00Z") > 0, false)
-      error_message = "Config: timeout is missing or not an RFC 3339 time."
-    }
-    precondition {
       condition     = try(trimspace(local.seed_config.apiKey) != "", false)
       error_message = "Config: apiKey is empty."
     }
@@ -63,29 +60,12 @@ resource "aws_ssm_parameter" "config" {
   })
 }
 
-# A warning, not an error: the file's timeout only matters when the parameter
-# is created (or re-seeded), and is expected to be past on later applies.
+# A warning, not an error: the file's timeout only matters when the state
+# item is created (or re-seeded), and is expected to be past on later applies.
 check "seed_timeout_in_future" {
   assert {
     condition     = try(timecmp(local.seed_config.timeout, plantimestamp()) > 0, false)
-    error_message = "The timeout in config_file_path is not in the future. If this apply creates or re-seeds the parameter, the document will be sent on the next daily run."
+    error_message = "The timeout in config_file_path is not in the future. If this apply creates or re-seeds the state item, the document will be sent on the next daily run."
   }
 }
 
-# The ETag of the document last seen, so that a change of content can be
-# reported to the owner. "none" (domain.NoRecordedETag) until a document is
-# seen; the first one is recorded without a report. The Lambdas own the
-# value after creation.
-resource "aws_ssm_parameter" "document_etag" {
-  name  = "/${var.application_name}/document-etag"
-  type  = "SecureString" # written with the same adapter as the config
-  value = "none"
-
-  lifecycle {
-    ignore_changes = [value]
-  }
-
-  tags = merge(var.tags, {
-    Name = "Recorded Document ETag"
-  })
-}

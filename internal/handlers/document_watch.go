@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -14,54 +15,74 @@ import (
 // runs on each S3 upload and on each daily run, which catches missed events
 // and records the first ETag of a document uploaded before it was deployed.
 type DocumentWatcher struct {
-	etagStore   ports.ConfigStore // Holds the recorded ETag
+	stateStore  ports.StateStore // Holds the recorded ETag
 	emailSender ports.EmailSender
 	service     *domain.DeadmansHandleService
-	etagParam   string
 }
 
-// NewDocumentWatcher creates a watcher that records the ETag in etagParam
+// NewDocumentWatcher creates a new document watcher
 func NewDocumentWatcher(
-	etagStore ports.ConfigStore,
+	stateStore ports.StateStore,
 	emailSender ports.EmailSender,
 	service *domain.DeadmansHandleService,
-	etagParam string,
 ) *DocumentWatcher {
 	return &DocumentWatcher{
-		etagStore:   etagStore,
+		stateStore:  stateStore,
 		emailSender: emailSender,
 		service:     service,
-		etagParam:   etagParam,
 	}
 }
 
-// Check compares doc with the recorded ETag, tells the owner of a change and
-// records the new ETag. If the email fails, nothing is recorded, so the
-// next check retries it. origin is nil when not called for an S3 event.
+// swapAttempts bounds the retries when another invocation records an ETag
+// between this one's read and its swap
+const swapAttempts = 3
+
+// Check compares doc with the recorded ETag, records the new ETag and tells
+// the owner of a change. Recording first, with a conditional swap, means
+// only one of several concurrent checks sends the notice. If the notice
+// fails, the swap is undone so that the next check retries it. origin is
+// nil when not called for an S3 event.
 func (w *DocumentWatcher) Check(ctx context.Context, cfg *config.Config, doc domain.Document, origin *domain.ChangeOrigin) error {
-	recorded, err := w.etagStore.GetConfig(ctx, w.etagParam)
-	if err != nil {
-		return fmt.Errorf("reading the recorded document ETag: %w", err)
-	}
-
-	notify, record := w.service.DocumentChanged(string(recorded), doc)
-	if notify {
-		email := w.service.DocumentChangedEmail(cfg, doc, origin)
-		if err := w.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, nil); err != nil {
-			return fmt.Errorf("sending document change notice to %s: %w", email.To, err)
+	for range swapAttempts {
+		state, err := w.stateStore.GetState(ctx)
+		if err != nil {
+			return fmt.Errorf("reading the recorded document ETag: %w", err)
 		}
-		slog.Info("Document change reported", "to", email.To, "from", string(recorded), "etag", doc.ETag)
-	}
 
-	if record {
-		if err := w.etagStore.SetConfig(ctx, w.etagParam, []byte(doc.ETag)); err != nil {
+		notify, record := w.service.DocumentChanged(state.DocumentETag, doc)
+		if !record {
+			return nil
+		}
+
+		err = w.stateStore.SwapDocumentETag(ctx, state.DocumentETag, doc.ETag)
+		if errors.Is(err, ports.ErrConditionFailed) {
+			// Another check recorded an ETag first; compare with that one
+			continue
+		}
+		if err != nil {
 			return fmt.Errorf("recording the document ETag: %w", err)
 		}
+
 		if !notify {
 			slog.Info("Document ETag recorded", "etag", doc.ETag)
+			return nil
 		}
+
+		email := w.service.DocumentChangedEmail(cfg, state, doc, origin)
+		if err := w.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, nil); err != nil {
+			err = fmt.Errorf("sending document change notice to %s: %w", email.To, err)
+			// A failed condition means a later check has already moved the
+			// recorded ETag on, and reports from there
+			revertErr := w.stateStore.SwapDocumentETag(ctx, doc.ETag, state.DocumentETag)
+			if revertErr != nil && !errors.Is(revertErr, ports.ErrConditionFailed) {
+				return errors.Join(err, fmt.Errorf("restoring the recorded document ETag: %w", revertErr))
+			}
+			return err
+		}
+		slog.Info("Document change reported", "to", email.To, "from", state.DocumentETag, "etag", doc.ETag)
+		return nil
 	}
-	return nil
+	return fmt.Errorf("recording the document ETag: still changing after %d attempts", swapAttempts)
 }
 
 // DocumentWatchHandler handles the S3 events for uploads of the document

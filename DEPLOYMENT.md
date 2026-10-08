@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
+1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, DynamoDB, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
 2. **Go 1.26+** (see `go.mod`): For building
 3. **Terraform 1.5+**: For infrastructure deployment
 4. **AWS CLI**: Configured with credentials
@@ -84,9 +84,9 @@ Rules, checked by `terraform plan` and again by both Lambdas on every run:
   `deployment.documentKey`, if given, must be non-empty. The Lambdas do not
   check these.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
-  check-in then moves it to `resetDays` from now. If it is already past when
-  Terraform creates the parameter, the document is sent on the next daily
-  run, so `terraform plan` warns about it.
+  check-in then moves it to `resetDays` from now. It only seeds the DynamoDB
+  state item when Terraform creates it. If it is already past then, the
+  document is sent on the next daily run, so `terraform plan` warns about it.
 
 If the stored config breaks these rules (for example after a `put-parameter`),
 check-ins fail with HTTP 500 and the daily run errors, which raises the
@@ -145,7 +145,9 @@ Review the plan to ensure it will create the expected resources:
 - S3 bucket for the document
 - EventBridge rules for the daily run and for uploads of the document, with an
   SQS dead-letter queue
-- Parameter Store configuration and recorded document ETag (SecureStrings)
+- Parameter Store configuration (SecureString)
+- DynamoDB table holding the timeout and delivery state, with its item seeded
+  from the config file's `timeout`
 - SES domain identity, unless `create_ses_identity` is false, and its DKIM
   records if `manage_dkim_dns_records` is true
 - SNS topic, owner email subscription and CloudWatch alarms
@@ -164,6 +166,7 @@ This will create all resources and output:
 - `api_endpoint`: Your check-in API endpoint
 - `document_bucket_name`: S3 bucket name
 - `config_parameter_name`: Parameter Store path
+- `state_table_name`: DynamoDB table holding the state
 - `http_lambda_function_name`, `scheduled_lambda_function_name`,
   `docwatch_lambda_function_name`: Lambda names
 - `eventbridge_rule_name`: EventBridge rule name
@@ -252,14 +255,13 @@ terraform import aws_cloudwatch_log_group.docwatch_handler /aws/lambda/deadmansh
 
 ## Updating the Configuration
 
-Terraform only uses `config_file_path` to create the parameter, apart from the
-`deployment` section (see above). After that, the
-Lambda rewrites the value on every check-in, so Terraform ignores changes to it
-and re-running `terraform apply` will not reset the countdown.
+Terraform only uses `config_file_path` to create the parameter and the state
+item, apart from the `deployment` section (see above). After that, Terraform
+ignores changes to both, so re-running `terraform apply` will not reset the
+configuration or the countdown.
 
-To update the configuration after deployment, write it directly. The `timeout`
-in the file replaces the stored one, so set it to a future date (or check in
-straight afterwards):
+To update the configuration after deployment, write it directly. This no
+longer touches the timeout, which is in DynamoDB:
 
 ```bash
 # Update config.json
@@ -273,9 +275,26 @@ aws ssm put-parameter \
   --type SecureString
 ```
 
-The `deployment` section is ignored by the Lambdas and dropped from the
-parameter on their next save. To change it, edit `config.json` and run
-`terraform apply`.
+The Lambdas ignore the `deployment` section and `timeout`. To change the
+`deployment` section, edit `config.json` and run `terraform apply`; the
+timeout is changed by checking in.
+
+### Checking in without the API
+
+If the API is unavailable, set the timeout in DynamoDB directly. This does
+what a check-in does, including clearing the delivery state:
+
+```bash
+# A new timeout, resetDays from now (GNU date; on macOS: date -u -v+30d ...)
+TIMEOUT=$(date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)
+
+aws dynamodb update-item \
+  --table-name deadmanshandle-state \
+  --key '{"id":{"S":"handle"}}' \
+  --update-expression 'SET #t = :t REMOVE sentTo, ownerNotified ADD checkIns :one' \
+  --expression-attribute-names '{"#t":"timeout"}' \
+  --expression-attribute-values "{\":t\":{\"S\":\"$TIMEOUT\"},\":one\":{\"N\":\"1\"}}"
+```
 
 ## Testing
 
@@ -299,7 +318,8 @@ terraform destroy
 ```
 
 **Warning**: This deletes all the resources, including the Parameter Store
-configuration (and with it the current timeout), the SES identity and its DKIM
+configuration, the DynamoDB state (and with it the current timeout), the SES
+identity and its DKIM
 records. The S3 bucket is only deleted when empty, so `terraform destroy`
 fails until every object (and, if it is versioned, every object version) is
 removed.
@@ -375,8 +395,8 @@ parameter, then run `terraform apply` so the subscription follows.
 - `deadmanshandle-api-rejected-requests`: the check-in API rejected 10 or more
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.
-  While it lasts, check in by writing the config with a future `timeout`
-  (see [Updating the Configuration](#updating-the-configuration)).
+  While it lasts, check in with the AWS CLI (see
+  [Checking in without the API](#checking-in-without-the-api)).
 
 ## Cost Estimation
 
@@ -387,6 +407,7 @@ are:
 - CloudWatch alarms: about $0.10 per alarm per month (4 alarms)
 - Route 53: the hosted zone's own charge, if it is not already paid for
 
-Lambda, API Gateway, S3, Parameter Store (standard parameter), SQS, SNS email
+Lambda, API Gateway, S3, Parameter Store (standard parameter), DynamoDB
+(on-demand, plus point-in-time recovery for one tiny item), SQS, SNS email
 and SES (about $0.10 per 1,000 emails) are negligible at this volume. Expect
 well under $1 a month; check current AWS pricing for your region.

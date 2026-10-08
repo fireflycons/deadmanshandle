@@ -40,7 +40,8 @@ The application uses hexagonal architecture with clear separation between:
 
 ## Configuration
 
-Configuration is stored in AWS Parameter Store as JSON:
+Configuration is stored in AWS Parameter Store as JSON. The Lambdas only read
+it. The config file used to create it also holds the first `timeout`:
 
 ```json
 {
@@ -56,18 +57,26 @@ Configuration is stored in AWS Parameter Store as JSON:
 }
 ```
 
-The config is validated by `terraform plan` and by both Lambdas; see
+The config is validated by `terraform plan` and by the Lambdas; see
 [DEPLOYMENT.md](DEPLOYMENT.md) for the rules.
 
-Once the timeout passes, the scheduled Lambda emails the document to each
-recipient and sends the owner a notice that it has done so. It records progress
-in two extra fields, so the document goes out only once and a failed send is
-retried on the next daily run without re-sending to anyone else:
+What changes at run time is kept in one item of a DynamoDB table
+(`deadmanshandle-state`), whose updates are atomic, so Lambdas running at the
+same time cannot undo each other's writes:
 
+- `timeout`: seeded from the config file, then set by each check-in
+- `checkIns`: counts check-ins
 - `sentTo`: recipients who have already been sent the document
-- `ownerNotified`: whether the owner has been told
+- `ownerNotified`: whether the owner has been told that it was sent
+- `documentETag`: the document's ETag when last seen
 
-A check-in clears both. Leave them out of a config file you upload by hand.
+Once the timeout passes, the scheduled Lambda emails the document to each
+recipient and sends the owner a notice that it has done so. Each send is
+recorded as it succeeds, so the document goes out only once and a failed send
+is retried on the next daily run without re-sending to anyone else. A
+check-in clears `sentTo` and `ownerNotified`. A send is only recorded if no
+check-in has happened since the run started, so a check-in during a run
+stops it after the email already being sent.
 
 Every daily run also checks that the document is in S3. If it is missing, the
 owner is emailed each day until it is uploaded. If the timeout has passed while
@@ -79,8 +88,8 @@ unauthorised change can be put right before the document is sent. Each upload
 is checked straight away, and every daily run checks again in case an upload
 was missed. Only the first document ever seen is not reported, so deleting the
 document and uploading a different one is reported too. Your own updates are
-reported as well. The recorded ETag is kept in the `/deadmanshandle/document-etag`
-parameter.
+reported as well. If two checks see the same change at once, only one reports
+it.
 
 ## Building
 
@@ -167,17 +176,19 @@ go test -cover ./...
 
 ## Environment Variables
 
-- `CONFIG_PARAMETER_NAME`: Parameter Store path for configuration (both Lambdas)
-- `SENDER_EMAIL`: Email address for notifications (scheduled Lambda)
-- `DOCUMENT_BUCKET`: S3 bucket containing the document (scheduled Lambda)
-- `DOCUMENT_KEY`: S3 object key for the document (scheduled Lambda)
+- `CONFIG_PARAMETER_NAME`: Parameter Store path for configuration (all Lambdas)
+- `STATE_TABLE_NAME`: DynamoDB table holding the state (all Lambdas)
+- `SENDER_EMAIL`: Email address for notifications
+- `DOCUMENT_BUCKET`: S3 bucket containing the document (scheduled and docwatch)
+- `DOCUMENT_KEY`: S3 object key for the document (scheduled and docwatch)
 
 ## AWS Services Used
 
-- **AWS Lambda**: Compute (2 functions)
+- **AWS Lambda**: Compute (3 functions)
 - **API Gateway**: HTTP endpoint for check-ins
 - **EventBridge**: Scheduled daily checks
 - **Parameter Store**: Configuration storage
+- **DynamoDB**: Timeout and delivery state
 - **S3**: Document storage
 - **SES**: Email delivery
 - **CloudWatch**: Logs (14-day retention) and alarms
