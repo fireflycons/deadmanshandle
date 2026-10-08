@@ -6,8 +6,10 @@ deadmanshandle/
 ├── cmd/                                  # Lambda entry points
 │   ├── http/
 │   │   └── main.go                       # HTTP API Gateway handler
-│   └── scheduled/
-│       └── main.go                       # EventBridge scheduled handler
+│   ├── scheduled/
+│   │   └── main.go                       # EventBridge scheduled handler
+│   └── docwatch/
+│       └── main.go                       # S3 upload (EventBridge) handler
 │
 ├── internal/                             # Application packages
 │   ├── adapters/                         # AWS service implementations
@@ -26,6 +28,8 @@ deadmanshandle/
 │   │   └── service_test.go               # Domain logic tests
 │   │
 │   ├── handlers/                         # Lambda handlers
+│   │   ├── document_watch.go             # Document change check and upload handler
+│   │   ├── document_watch_test.go        # Document change tests
 │   │   ├── http_handler.go               # HTTP API handler
 │   │   ├── http_handler_test.go          # HTTP handler tests
 │   │   ├── scheduled_event_handler.go    # EventBridge handler
@@ -45,8 +49,8 @@ deadmanshandle/
 │   ├── lambda.tf                         # Lambda functions and log groups
 │   ├── api_gateway.tf                    # HTTP API Gateway
 │   ├── s3.tf                             # S3 bucket configuration
-│   ├── parameter_store.tf                # SSM parameter and seed-config checks
-│   ├── eventbridge.tf                    # EventBridge rule and DLQ
+│   ├── parameter_store.tf                # SSM parameters and seed-config checks
+│   ├── eventbridge.tf                    # EventBridge rules and DLQ
 │   ├── ses.tf                            # SES domain identity and DKIM records
 │   ├── alarms.tf                         # SNS topic and CloudWatch alarms
 │   ├── outputs.tf                        # Output values
@@ -55,7 +59,8 @@ deadmanshandle/
 │
 ├── bin/                                  # Compiled binaries (generated)
 │   ├── http/bootstrap                    # HTTP handler binary
-│   └── scheduled/bootstrap               # Scheduled handler binary
+│   ├── scheduled/bootstrap               # Scheduled handler binary
+│   └── docwatch/bootstrap                # Document watch handler binary
 │
 ├── go.mod                                # Go module definition
 ├── go.sum                                # Go dependencies checksums
@@ -159,7 +164,8 @@ makes the decisions; the handlers carry them out through the ports:
 ```
 ┌─────────────────────────────────────┐
 │       Lambda Entry Points           │
-│  (cmd/http, cmd/scheduled)          │
+│  (cmd/http, cmd/scheduled,          │
+│   cmd/docwatch)                     │
 └──────────────┬──────────────────────┘
                │ wire up
 ┌──────────────▼──────────────────────┐

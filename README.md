@@ -74,6 +74,14 @@ owner is emailed each day until it is uploaded. If the timeout has passed while
 it is missing, the owner is told that nothing could be sent, and the run errors
 (raising the alarm); once the document is uploaded, the next run delivers it.
 
+The owner is also emailed whenever the document's content changes, so that an
+unauthorised change can be put right before the document is sent. Each upload
+is checked straight away, and every daily run checks again in case an upload
+was missed. Only the first document ever seen is not reported, so deleting the
+document and uploading a different one is reported too. Your own updates are
+reported as well. The recorded ETag is kept in the `/deadmanshandle/document-etag`
+parameter.
+
 ## Building
 
 ### Prerequisites

@@ -59,10 +59,29 @@ resource "aws_cloudwatch_metric_alarm" "scheduled_not_run" {
   tags = var.tags
 }
 
+# A document change could not be checked or reported. The daily run checks
+# again, and raises scheduled-errors if it fails too.
+resource "aws_cloudwatch_metric_alarm" "docwatch_errors" {
+  alarm_name          = "${var.application_name}-docwatch-errors"
+  alarm_description   = "Checking an upload of the dead man's handle document returned an error. Check the docwatch Lambda's CloudWatch logs."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.docwatch_handler.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = [aws_sns_topic.alarms.arn]
+
+  tags = var.tags
+}
+
 # EventBridge could not deliver the event to the Lambda.
 resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
   alarm_name          = "${var.application_name}-dlq-messages"
-  alarm_description   = "EventBridge failed to invoke the daily run; the event is in the DLQ."
+  alarm_description   = "EventBridge failed to invoke the daily run or the document check; the event is in the DLQ."
   namespace           = "AWS/SQS"
   metric_name         = "ApproximateNumberOfMessagesVisible"
   dimensions          = { QueueName = aws_sqs_queue.dlq.name }

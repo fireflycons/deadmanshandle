@@ -34,12 +34,26 @@ const (
 	// EmailDeliveryBlocked tells the owner that the timeout has passed but
 	// the document is missing, so nothing was sent to the recipients
 	EmailDeliveryBlocked
+	// EmailDocumentChanged tells the owner that the document's content
+	// changed, in case someone else changed it
+	EmailDocumentChanged
 )
+
+// NoRecordedETag is the recorded ETag before any document has been seen.
+// Terraform creates the parameter holding the recorded ETag with this value.
+const NoRecordedETag = "none"
 
 // Document describes the document to be sent, as found by the scheduled run
 type Document struct {
 	Location  string // Where the owner should upload it, e.g. s3://bucket/key
 	Available bool
+	ETag      string // Changes with the content; empty when not Available
+}
+
+// ChangeOrigin describes who changed the document, as reported by S3
+type ChangeOrigin struct {
+	Requester string // AWS account ID (or service) that made the request
+	SourceIP  string
 }
 
 // EmailAction represents an email that should be sent
@@ -184,6 +198,33 @@ func (s *DeadmansHandleService) RecordSent(cfg *config.Config, email EmailAction
 	}
 }
 
+// DocumentChanged compares the document's current ETag with the one recorded.
+// The first document seen is recorded without notifying the owner; after
+// that, any change of content is reported. A missing document changes
+// nothing, so the recorded ETag survives a deletion and a re-upload with
+// different content is still reported.
+func (s *DeadmansHandleService) DocumentChanged(recorded string, doc Document) (notify, record bool) {
+	switch {
+	case !doc.Available || doc.ETag == recorded:
+		return false, false
+	case recorded == NoRecordedETag:
+		return false, true
+	default:
+		return true, true
+	}
+}
+
+// DocumentChangedEmail tells the owner that the document's content changed.
+// origin is nil when the change was found by the daily run.
+func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, doc Document, origin *ChangeOrigin) EmailAction {
+	return EmailAction{
+		Kind:    EmailDocumentChanged,
+		To:      cfg.Owner,
+		Subject: "Deadman's Handle Document Changed",
+		Body:    documentChangedBody(s.now(), cfg.Timeout, doc.Location, origin),
+	}
+}
+
 // triggerNoticeBody tells the owner that the document is being sent, so
 // that a false trigger can be noticed and followed up.
 func triggerNoticeBody(timeout time.Time, recipients []string) string {
@@ -213,6 +254,19 @@ func deliveryBlockedBody(timeout time.Time, location string, pending []string) s
 		"  " + strings.Join(pending, "\n  ") + "\n\n" +
 		"Upload the document and it will be sent on the next daily run. " +
 		"If this is a mistake, check in to reset the timeout."
+}
+
+// documentChangedBody reports a change of content, so that an unauthorised
+// change can be put right before the document is sent.
+func documentChangedBody(now, timeout time.Time, location string, origin *ChangeOrigin) string {
+	body := "The content of the document for your deadman's handle, " + location +
+		", changed. This was noticed on " + now.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ".\n\n"
+	if origin != nil {
+		body += "Changed by AWS account " + origin.Requester + " from IP address " + origin.SourceIP + ".\n\n"
+	}
+	return body + "If you made this change, no action is needed. If you did not, someone else can " +
+		"write to the bucket: check its access and upload the correct document before the handle " +
+		"triggers on " + timeout.UTC().Format("Monday 2 January 2006 at 15:04 MST") + "."
 }
 
 // warningBody describes how long the owner has left to check in. The day

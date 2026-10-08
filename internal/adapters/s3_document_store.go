@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
@@ -37,21 +38,21 @@ func (s *S3DocumentStore) GetDocument(ctx context.Context, bucket, key string) (
 	return io.ReadAll(output.Body)
 }
 
-// DocumentExists checks for the object with HeadObject. S3 only reports a
+// DocumentETag checks for the object with HeadObject. S3 only reports a
 // missing object as NotFound when the caller may list the bucket; without
 // s3:ListBucket it is AccessDenied, which is returned as an error.
-func (s *S3DocumentStore) DocumentExists(ctx context.Context, bucket, key string) (bool, error) {
-	_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+func (s *S3DocumentStore) DocumentETag(ctx context.Context, bucket, key string) (string, bool, error) {
+	output, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: &bucket,
 		Key:    &key,
 	})
 	if err == nil {
-		return true, nil
+		return aws.ToString(output.ETag), true, nil
 	}
 
 	var notFound *types.NotFound
 	if errors.As(err, &notFound) {
-		return false, nil
+		return "", false, nil
 	}
-	return false, err
+	return "", false, err
 }

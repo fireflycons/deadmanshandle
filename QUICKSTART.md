@@ -39,7 +39,7 @@ go mod download
 make build
 
 # Verify build succeeded
-ls bin/http bin/scheduled
+ls bin/http bin/scheduled bin/docwatch
 # Each should contain: bootstrap
 ```
 
@@ -134,7 +134,9 @@ aws s3 cp important-document.pdf \
   "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```
 
-The handle cannot send anything until the document is uploaded.
+The handle cannot send anything until the document is uploaded. The first
+upload is recorded silently; after that, you are emailed whenever the content
+changes, in case someone else changed it.
 
 ### Test Scheduled Event (Optional)
 

@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 
+	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -15,7 +18,16 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/handlers"
 )
 
-var scheduledHandler *handlers.ScheduledEventHandler
+var documentWatchHandler *handlers.DocumentWatchHandler
+
+// objectCreated is the part of an S3 "Object Created" event's detail used here
+type objectCreated struct {
+	Object struct {
+		Key string `json:"key"`
+	} `json:"object"`
+	Requester string `json:"requester"`
+	SourceIP  string `json:"source-ip-address"`
+}
 
 func init() {
 	ctx := context.Background()
@@ -44,30 +56,36 @@ func init() {
 
 	// Initialize handler
 	watcher := handlers.NewDocumentWatcher(configStore, emailSender, service, os.Getenv("DOCUMENT_ETAG_PARAMETER_NAME"))
-	paramName := os.Getenv("CONFIG_PARAMETER_NAME")
-	docBucket := os.Getenv("DOCUMENT_BUCKET")
-	docKey := os.Getenv("DOCUMENT_KEY")
-	scheduledHandler = handlers.NewScheduledEventHandler(
+	documentWatchHandler = handlers.NewDocumentWatchHandler(
 		configStore,
 		documentStore,
-		emailSender,
-		service,
 		watcher,
-		paramName,
-		docBucket,
-		docKey,
+		os.Getenv("CONFIG_PARAMETER_NAME"),
+		os.Getenv("DOCUMENT_BUCKET"),
+		os.Getenv("DOCUMENT_KEY"),
 	)
 }
 
-// HandleScheduledEvent handles EventBridge scheduled events
-func HandleScheduledEvent(ctx context.Context, event interface{}) error {
-	err := scheduledHandler.Handle(ctx)
+// HandleDocumentEvent handles the EventBridge events for uploads of the document
+func HandleDocumentEvent(ctx context.Context, event events.CloudWatchEvent) error {
+	var detail objectCreated
+	if err := json.Unmarshal(event.Detail, &detail); err != nil {
+		err = fmt.Errorf("decoding %s event: %w", event.DetailType, err)
+		slog.Error("Document check failed", "error", err)
+		return err
+	}
+	slog.Info("Document uploaded", "key", detail.Object.Key, "requester", detail.Requester, "sourceIP", detail.SourceIP)
+
+	err := documentWatchHandler.Handle(ctx, &domain.ChangeOrigin{
+		Requester: detail.Requester,
+		SourceIP:  detail.SourceIP,
+	})
 	if err != nil {
-		slog.Error("Scheduled run failed", "error", err)
+		slog.Error("Document check failed", "error", err)
 	}
 	return err
 }
 
 func main() {
-	lambda.Start(HandleScheduledEvent)
+	lambda.Start(HandleDocumentEvent)
 }

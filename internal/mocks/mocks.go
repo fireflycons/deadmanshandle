@@ -2,6 +2,8 @@ package mocks
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 
 	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
@@ -60,9 +62,14 @@ func (m *MockDocumentStore) GetDocument(ctx context.Context, bucket, key string)
 	return nil, nil
 }
 
-func (m *MockDocumentStore) DocumentExists(ctx context.Context, bucket, key string) (bool, error) {
-	_, ok := m.Documents[bucket][key]
-	return ok, nil
+// DocumentETag derives the ETag from the content, so replacing a document
+// with different content changes it
+func (m *MockDocumentStore) DocumentETag(ctx context.Context, bucket, key string) (string, bool, error) {
+	data, ok := m.Documents[bucket][key]
+	if !ok {
+		return "", false, nil
+	}
+	return fmt.Sprintf("\"%x\"", sha256.Sum256(data)), true, nil
 }
 
 func (m *MockDocumentStore) SetDocument(bucket, key string, data []byte) {

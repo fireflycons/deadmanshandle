@@ -55,3 +55,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "document_bucket_e
     }
   }
 }
+
+# Sends the bucket's events to EventBridge, where the document-changed rule
+# picks out uploads of the document (see eventbridge.tf).
+resource "aws_s3_bucket_notification" "document_bucket" {
+  bucket      = aws_s3_bucket.document_bucket.id
+  eventbridge = true
+}

@@ -118,9 +118,10 @@ Key variables:
 make build
 
 # Or manually:
-mkdir -p bin/http bin/scheduled
+mkdir -p bin/http bin/scheduled bin/docwatch
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
 ```
 
 ## Deploy Infrastructure
@@ -140,10 +141,11 @@ terraform plan -out=tfplan
 
 Review the plan to ensure it will create the expected resources:
 - API Gateway HTTP API with the `POST /checkin` route
-- Lambda functions (HTTP and scheduled) and their log groups
+- Lambda functions (HTTP, scheduled and document watch) and their log groups
 - S3 bucket for the document
-- EventBridge rule, with an SQS dead-letter queue
-- Parameter Store configuration (SecureString)
+- EventBridge rules for the daily run and for uploads of the document, with an
+  SQS dead-letter queue
+- Parameter Store configuration and recorded document ETag (SecureStrings)
 - SES domain identity, unless `create_ses_identity` is false, and its DKIM
   records if `manage_dkim_dns_records` is true
 - SNS topic, owner email subscription and CloudWatch alarms
@@ -162,7 +164,8 @@ This will create all resources and output:
 - `api_endpoint`: Your check-in API endpoint
 - `document_bucket_name`: S3 bucket name
 - `config_parameter_name`: Parameter Store path
-- `http_lambda_function_name`, `scheduled_lambda_function_name`: Lambda names
+- `http_lambda_function_name`, `scheduled_lambda_function_name`,
+  `docwatch_lambda_function_name`: Lambda names
 - `eventbridge_rule_name`: EventBridge rule name
 - `alarm_topic_arn`: SNS topic for alarms
 - `ses_dkim_dns_records`: DKIM records for the sender domain
@@ -198,6 +201,9 @@ Expected response:
 The key must match `deployment.documentKey` (default `document.pdf`). Recipients receive
 the attachment under the key's file name. Until the document is uploaded, each
 daily run emails the owner that it is missing.
+
+The first upload is recorded silently. After that, the owner is emailed
+whenever the content changes, including your own updates.
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
@@ -241,6 +247,7 @@ with `ResourceAlreadyExistsException`. Import them once:
 ```bash
 terraform import aws_cloudwatch_log_group.http_handler /aws/lambda/deadmanshandle-http
 terraform import aws_cloudwatch_log_group.scheduled_handler /aws/lambda/deadmanshandle-scheduled
+terraform import aws_cloudwatch_log_group.docwatch_handler /aws/lambda/deadmanshandle-docwatch
 ```
 
 ## Updating the Configuration
@@ -362,7 +369,9 @@ parameter, then run `terraform apply` so the subscription follows.
 - `deadmanshandle-scheduled-not-run`: the daily run was not invoked in the last
   24 hours. This alarm fires once after the first deploy, until the first
   scheduled run happens.
-- `deadmanshandle-dlq-messages`: EventBridge could not invoke the Lambda.
+- `deadmanshandle-docwatch-errors`: an upload of the document could not be
+  checked, or the change could not be reported. The daily run checks again.
+- `deadmanshandle-dlq-messages`: EventBridge could not invoke a Lambda.
 - `deadmanshandle-api-rejected-requests`: the check-in API rejected 10 or more
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.

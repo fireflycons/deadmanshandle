@@ -13,6 +13,13 @@ resource "aws_cloudwatch_log_group" "scheduled_handler" {
   tags = var.tags
 }
 
+resource "aws_cloudwatch_log_group" "docwatch_handler" {
+  name              = "/aws/lambda/${var.application_name}-docwatch"
+  retention_in_days = 14
+
+  tags = var.tags
+}
+
 resource "aws_lambda_function" "http_handler" {
   filename      = data.archive_file.http_lambda.output_path
   function_name = "${var.application_name}-http"
@@ -55,15 +62,47 @@ resource "aws_lambda_function" "scheduled_handler" {
 
   environment {
     variables = {
-      CONFIG_PARAMETER_NAME = aws_ssm_parameter.config.name
-      SENDER_EMAIL          = local.sender_email
-      DOCUMENT_BUCKET       = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY          = local.document_key
+      CONFIG_PARAMETER_NAME        = aws_ssm_parameter.config.name
+      DOCUMENT_ETAG_PARAMETER_NAME = aws_ssm_parameter.document_etag.name
+      SENDER_EMAIL                 = local.sender_email
+      DOCUMENT_BUCKET              = aws_s3_bucket.document_bucket.id
+      DOCUMENT_KEY                 = local.document_key
     }
   }
 
   tags = merge(var.tags, {
     Name = "Scheduled Handler Lambda"
+  })
+}
+
+# Reports changes to the document's content to the owner. A separate function
+# from the daily run, so that uploads cannot mask the scheduled-not-run alarm.
+resource "aws_lambda_function" "docwatch_handler" {
+  filename      = data.archive_file.docwatch_lambda.output_path
+  function_name = "${var.application_name}-docwatch"
+  role          = aws_iam_role.lambda_role.arn
+  handler       = "bootstrap"
+  runtime       = "provided.al2023"
+  architectures = ["arm64"] # must match GOARCH in the Makefile
+  timeout       = 30
+  memory_size   = 256
+
+  source_code_hash = data.archive_file.docwatch_lambda.output_base64sha256
+
+  depends_on = [aws_cloudwatch_log_group.docwatch_handler]
+
+  environment {
+    variables = {
+      CONFIG_PARAMETER_NAME        = aws_ssm_parameter.config.name
+      DOCUMENT_ETAG_PARAMETER_NAME = aws_ssm_parameter.document_etag.name
+      SENDER_EMAIL                 = local.sender_email
+      DOCUMENT_BUCKET              = aws_s3_bucket.document_bucket.id
+      DOCUMENT_KEY                 = local.document_key
+    }
+  }
+
+  tags = merge(var.tags, {
+    Name = "Document Watch Lambda"
   })
 }
 
@@ -74,6 +113,13 @@ data "archive_file" "http_lambda" {
   type             = "zip"
   source_file      = "${path.module}/../bin/http/bootstrap"
   output_path      = "${path.module}/build/http.zip"
+  output_file_mode = "0755"
+}
+
+data "archive_file" "docwatch_lambda" {
+  type             = "zip"
+  source_file      = "${path.module}/../bin/docwatch/bootstrap"
+  output_path      = "${path.module}/build/docwatch.zip"
   output_file_mode = "0755"
 }
 

@@ -13,8 +13,9 @@ type ConfigStore interface {
 // DocumentStore defines the interface for retrieving documents from storage
 type DocumentStore interface {
 	GetDocument(ctx context.Context, bucket, key string) ([]byte, error)
-	// DocumentExists reports false, with no error, only if there is no such object
-	DocumentExists(ctx context.Context, bucket, key string) (bool, error)
+	// DocumentETag returns the object's ETag, which changes with its content.
+	// It reports exists false, with no error, only if there is no such object.
+	DocumentETag(ctx context.Context, bucket, key string) (etag string, exists bool, err error)
 }
 
 // EmailSender defines the interface for sending emails

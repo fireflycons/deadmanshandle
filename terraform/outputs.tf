@@ -18,6 +18,11 @@ output "scheduled_lambda_function_name" {
   value       = aws_lambda_function.scheduled_handler.function_name
 }
 
+output "docwatch_lambda_function_name" {
+  description = "Document Watch Lambda function name"
+  value       = aws_lambda_function.docwatch_handler.function_name
+}
+
 output "config_parameter_name" {
   description = "Parameter Store configuration parameter name"
   value       = aws_ssm_parameter.config.name

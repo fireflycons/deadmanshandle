@@ -280,3 +280,61 @@ func TestProcessScheduledEventDocumentMissing(t *testing.T) {
 		})
 	}
 }
+
+func TestDocumentChanged(t *testing.T) {
+	service := NewDeadmansHandleService()
+	present := Document{Location: "s3://bucket/document.pdf", Available: true, ETag: `"new"`}
+	missing := Document{Location: "s3://bucket/document.pdf"}
+
+	tests := []struct {
+		name         string
+		recorded     string
+		doc          Document
+		notify, save bool
+	}{
+		{"first document is recorded silently", NoRecordedETag, present, false, true},
+		{"same content", `"new"`, present, false, false},
+		{"changed content", `"old"`, present, true, true},
+		{"missing keeps the recorded ETag", `"old"`, missing, false, false},
+		{"missing before any document", NoRecordedETag, missing, false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notify, save := service.DocumentChanged(tt.recorded, tt.doc)
+			if notify != tt.notify || save != tt.save {
+				t.Errorf("Expected notify=%v record=%v, got notify=%v record=%v", tt.notify, tt.save, notify, save)
+			}
+		})
+	}
+}
+
+func TestDocumentChangedEmail(t *testing.T) {
+	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	service := NewDeadmansHandleServiceWithTime(now)
+	cfg := &config.Config{Owner: "owner@example.com", Timeout: now.AddDate(0, 0, 10)}
+
+	tests := []struct {
+		name       string
+		origin     *ChangeOrigin
+		wantOrigin bool
+	}{
+		{"from an S3 event", &ChangeOrigin{Requester: "123456789012", SourceIP: "192.0.2.1"}, true},
+		{"from the daily run", nil, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			email := service.DocumentChangedEmail(cfg, testDocument, tt.origin)
+			if email.To != "owner@example.com" || email.Kind != EmailDocumentChanged || email.AttachDocument() {
+				t.Errorf("Expected an owner notice without attachment, got %+v", email)
+			}
+			for _, want := range []string{testDocument.Location, "Saturday 1 June 2024 at 12:00 UTC", "Tuesday 11 June 2024 at 12:00 UTC"} {
+				if !strings.Contains(email.Body, want) {
+					t.Errorf("Expected body to contain %q, got %q", want, email.Body)
+				}
+			}
+			if got := strings.Contains(email.Body, "AWS account 123456789012 from IP address 192.0.2.1"); got != tt.wantOrigin {
+				t.Errorf("Expected origin in body %v, got %q", tt.wantOrigin, email.Body)
+			}
+		})
+	}
+}

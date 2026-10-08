@@ -36,7 +36,8 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "ssm:PutParameter"
         ]
         Resource = [
-          aws_ssm_parameter.config.arn
+          aws_ssm_parameter.config.arn,
+          aws_ssm_parameter.document_etag.arn
         ]
       },
       {

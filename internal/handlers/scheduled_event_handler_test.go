@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	testParam  = "test-param"
-	testBucket = "test-bucket"
-	testKey    = "docs/document.pdf"
+	testParam     = "test-param"
+	testETagParam = "test-etag-param"
+	testBucket    = "test-bucket"
+	testKey       = "docs/document.pdf"
 )
 
 var testNow = time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
@@ -31,13 +32,15 @@ func newScheduledTest(t *testing.T, cfg *config.Config) (*ScheduledEventHandler,
 		t.Fatalf("ToJSON failed: %v", err)
 	}
 	configStore.Data[testParam] = cfgData
+	configStore.Data[testETagParam] = []byte(domain.NoRecordedETag)
 
 	documentStore := mocks.NewMockDocumentStore()
 	documentStore.SetDocument(testBucket, testKey, []byte("the document"))
 
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
-	handler := NewScheduledEventHandler(configStore, documentStore, emailSender, service, testParam, testBucket, testKey)
+	watcher := NewDocumentWatcher(configStore, emailSender, service, testETagParam)
+	handler := NewScheduledEventHandler(configStore, documentStore, emailSender, service, watcher, testParam, testBucket, testKey)
 
 	return handler, configStore, emailSender
 }

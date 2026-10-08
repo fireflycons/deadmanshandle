@@ -19,6 +19,7 @@ type ScheduledEventHandler struct {
 	documentStore  ports.DocumentStore
 	emailSender    ports.EmailSender
 	service        *domain.DeadmansHandleService
+	watcher        *DocumentWatcher
 	paramName      string
 	documentBucket string
 	documentKey    string
@@ -30,6 +31,7 @@ func NewScheduledEventHandler(
 	documentStore ports.DocumentStore,
 	emailSender ports.EmailSender,
 	service *domain.DeadmansHandleService,
+	watcher *DocumentWatcher,
 	parameterName string,
 	docBucket string,
 	docKey string,
@@ -39,6 +41,7 @@ func NewScheduledEventHandler(
 		documentStore:  documentStore,
 		emailSender:    emailSender,
 		service:        service,
+		watcher:        watcher,
 		paramName:      parameterName,
 		documentBucket: docBucket,
 		documentKey:    docKey,
@@ -60,27 +63,30 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 
 	// Check for the document on every run, so the owner hears about a
 	// missing one before it is needed
-	exists, err := h.documentStore.DocumentExists(ctx, h.documentBucket, h.documentKey)
+	doc, err := lookupDocument(ctx, h.documentStore, h.documentBucket, h.documentKey)
 	if err != nil {
-		return fmt.Errorf("checking for the document: %w", err)
+		return err
 	}
-	doc := domain.Document{
-		Location:  "s3://" + h.documentBucket + "/" + h.documentKey,
-		Available: exists,
-	}
-	if !exists {
+	if !doc.Available {
 		slog.Warn("Document missing", "location", doc.Location)
+	}
+
+	// Report a change of content missed by the S3 event. A failure here is
+	// returned at the end but does not hold up the rest of the run.
+	var errs []error
+	if err := h.watcher.Check(ctx, cfg, doc, nil); err != nil {
+		errs = append(errs, err)
 	}
 
 	// Process scheduled event
 	emails, err := h.service.ProcessScheduledEvent(ctx, cfg, doc)
 	if err != nil {
-		return err
+		return errors.Join(append(errs, err)...)
 	}
 
 	if len(emails) == 0 {
 		slog.Info("No emails due", "timeout", cfg.Timeout)
-		return nil
+		return errors.Join(errs...)
 	}
 
 	// If document needs to be sent, fetch it
@@ -88,7 +94,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	if slices.ContainsFunc(emails, domain.EmailAction.AttachDocument) {
 		doc, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey)
 		if err != nil {
-			return err
+			return errors.Join(append(errs, err)...)
 		}
 		// Named after the object, e.g. "wills/will.pdf" is attached as "will.pdf"
 		attachments = map[string][]byte{
@@ -98,7 +104,6 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 
 	// Send each email individually so that one failure does not stop the
 	// rest, recording each success so later runs only retry the failures.
-	var errs []error
 	changed := false
 	for _, email := range emails {
 		var emailAttachments map[string][]byte

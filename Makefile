@@ -9,11 +9,13 @@ help:
 	@echo "  local       - Run local tests"
 
 build:
-	@mkdir -p bin/http bin/scheduled
+	@mkdir -p bin/http bin/scheduled bin/docwatch
 	@echo "Building HTTP handler..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
 	@echo "Building scheduled handler..."
 	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
+	@echo "Building document watch handler..."
+	@CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
 
 test:
 	@echo "Running tests..."

@@ -71,3 +71,21 @@ check "seed_timeout_in_future" {
     error_message = "The timeout in config_file_path is not in the future. If this apply creates or re-seeds the parameter, the document will be sent on the next daily run."
   }
 }
+
+# The ETag of the document last seen, so that a change of content can be
+# reported to the owner. "none" (domain.NoRecordedETag) until a document is
+# seen; the first one is recorded without a report. The Lambdas own the
+# value after creation.
+resource "aws_ssm_parameter" "document_etag" {
+  name  = "/${var.application_name}/document-etag"
+  type  = "SecureString" # written with the same adapter as the config
+  value = "none"
+
+  lifecycle {
+    ignore_changes = [value]
+  }
+
+  tags = merge(var.tags, {
+    Name = "Recorded Document ETag"
+  })
+}
