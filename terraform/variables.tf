@@ -30,6 +30,12 @@ variable "manage_dkim_dns_records" {
   default     = true
 }
 
+variable "document_versioning" {
+  description = "Enable versioning on the document bucket. Noncurrent versions are deleted after 30 days. False suspends versioning on a bucket that had it."
+  type        = bool
+  default     = false
+}
+
 variable "schedule_expression" {
   description = "EventBridge schedule expression for daily check (cron format)"
   type        = string

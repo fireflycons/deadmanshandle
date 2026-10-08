@@ -215,8 +215,8 @@ terraform destroy
 ```
 
 This removes everything Terraform created, including the stored config and
-the SES identity. The versioned S3 bucket must be emptied (all object versions)
-first, or `terraform destroy` fails.
+the SES identity. The S3 bucket must be emptied (all object versions, if it is
+versioned) first, or `terraform destroy` fails.
 
 ## Architecture Overview
 

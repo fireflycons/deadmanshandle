@@ -194,7 +194,7 @@ go test -cover ./...
 
 - All S3 buckets have public access blocked
 - The Parameter Store config is a SecureString, since it holds the API key
-- S3 bucket versioning enabled
+- Optional S3 bucket versioning (`document_versioning`); old versions expire after 30 days
 - API key validation uses constant-time comparison
 - The SES sender domain is verified with DKIM by Terraform
 

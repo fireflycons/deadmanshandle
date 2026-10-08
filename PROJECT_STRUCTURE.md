@@ -259,7 +259,7 @@ make clean      # Removes artifacts
 ## Security Considerations
 
 1. **API Key Validation**: Uses `subtle.ConstantTimeCompare` to prevent timing attacks
-2. **S3 Security**: All public access blocked, versioning enabled
+2. **S3 Security**: All public access blocked, optional versioning (`document_versioning`, off by default) with old versions expiring after 30 days
 3. **Parameter Store**: The configuration, which holds the API key, is a SecureString
 4. **IAM Least Privilege**: Lambda role only has necessary permissions
 5. **SES Verification**: The sender domain is verified with DKIM by Terraform

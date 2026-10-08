@@ -107,6 +107,9 @@ Key variables:
   the domain instead of creating one
 - `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
 - `aws_region`: Your preferred region
+- `document_versioning`: Versioning on the document bucket (default `false`).
+  When `true`, old versions are deleted 30 days after being replaced or
+  deleted. Setting it back to `false` suspends versioning
 
 ## Build the Application
 
@@ -290,8 +293,9 @@ terraform destroy
 
 **Warning**: This deletes all the resources, including the Parameter Store
 configuration (and with it the current timeout), the SES identity and its DKIM
-records. The S3 bucket is versioned and is only deleted when empty, so
-`terraform destroy` fails until every object version is removed.
+records. The S3 bucket is only deleted when empty, so `terraform destroy`
+fails until every object (and, if it is versioned, every object version) is
+removed.
 
 ## Troubleshooting
 
