@@ -97,16 +97,18 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		return errors.Join(errs...)
 	}
 
-	// If document needs to be sent, fetch it
+	// If document needs to be sent, fetch it. It must still be the one that
+	// was checked for changes; if not, nothing is sent and the error makes
+	// Lambda retry the run, which checks the new one first.
 	var attachments map[string][]byte
 	if slices.ContainsFunc(emails, domain.EmailAction.AttachDocument) {
-		doc, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey)
+		content, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey, doc.ETag)
 		if err != nil {
-			return errors.Join(append(errs, err)...)
+			return errors.Join(append(errs, fmt.Errorf("fetching the document: %w", err))...)
 		}
 		// Named after the object, e.g. "wills/will.pdf" is attached as "will.pdf"
 		attachments = map[string][]byte{
-			path.Base(h.documentKey): doc,
+			path.Base(h.documentKey): content,
 		}
 	}
 

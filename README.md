@@ -89,7 +89,9 @@ is checked straight away, and every daily run checks again in case an upload
 was missed. Only the first document ever seen is not reported, so deleting the
 document and uploading a different one is reported too. Your own updates are
 reported as well. If two checks see the same change at once, only one reports
-it.
+it. The daily run only sends the exact version it checked: if the document is
+replaced while the run is in progress, nothing is sent and the run's retry
+reports the change first.
 
 ## Building
 

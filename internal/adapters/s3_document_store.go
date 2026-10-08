@@ -8,6 +8,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 // S3DocumentStore implements the DocumentStore interface using AWS S3
@@ -22,12 +24,18 @@ func NewS3DocumentStore(client *s3.Client) *S3DocumentStore {
 	}
 }
 
-// GetDocument retrieves a document from S3
-func (s *S3DocumentStore) GetDocument(ctx context.Context, bucket, key string) ([]byte, error) {
+// GetDocument retrieves a document from S3, with IfMatch so that S3
+// refuses (412 PreconditionFailed) if the object has been replaced
+func (s *S3DocumentStore) GetDocument(ctx context.Context, bucket, key, etag string) ([]byte, error) {
 	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: &bucket,
-		Key:    &key,
+		Bucket:  &bucket,
+		Key:     &key,
+		IfMatch: &etag,
 	})
+	var apiErr smithy.APIError
+	if errors.As(err, &apiErr) && apiErr.ErrorCode() == "PreconditionFailed" {
+		return nil, ports.ErrDocumentChanged
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/config"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
 	"github.com/fireflycons/deadmanshandle/internal/mocks"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 const (
@@ -236,5 +237,37 @@ func TestScheduledHandlerDocumentMissingAfterTimeout(t *testing.T) {
 	}
 	if state := stateStore.State; len(state.SentTo) != 2 || !state.OwnerNotified {
 		t.Errorf("Expected delivery recorded, got SentTo=%v OwnerNotified=%v", state.SentTo, state.OwnerNotified)
+	}
+}
+
+// replacedAfterCheckStore replaces the document straight after its ETag is
+// checked, as an upload between the run's HeadObject and GetObject would
+type replacedAfterCheckStore struct {
+	*mocks.MockDocumentStore
+}
+
+func (s *replacedAfterCheckStore) DocumentETag(ctx context.Context, bucket, key string) (string, bool, error) {
+	etag, exists, err := s.MockDocumentStore.DocumentETag(ctx, bucket, key)
+	s.SetDocument(bucket, key, []byte("replaced"))
+	return etag, exists, err
+}
+
+func TestScheduledHandlerSendsNothingIfDocumentReplacedDuringRun(t *testing.T) {
+	handler, stateStore, emailSender := newScheduledTest(t, testConfig(), triggeredState())
+	documentStore := mocks.NewMockDocumentStore()
+	documentStore.SetDocument(testBucket, testKey, []byte("the document"))
+	handler.documentStore = &replacedAfterCheckStore{documentStore}
+
+	err := handler.Handle(context.Background())
+	if !errors.Is(err, ports.ErrDocumentChanged) {
+		t.Fatalf("Expected a document-changed error, got %v", err)
+	}
+	for _, email := range emailSender.SentEmails {
+		if email.Attachments != nil {
+			t.Errorf("Expected nothing sent with the document, got an email to %s", email.To)
+		}
+	}
+	if stateStore.State.SentTo != nil || stateStore.State.OwnerNotified {
+		t.Errorf("Expected no delivery recorded, got %+v", stateStore.State)
 	}
 }

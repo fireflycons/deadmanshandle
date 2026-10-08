@@ -8,6 +8,10 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/config"
 )
 
+// ErrDocumentChanged is returned by DocumentStore.GetDocument when the
+// document no longer has the ETag it was checked with
+var ErrDocumentChanged = errors.New("document changed since it was checked")
+
 // ErrConditionFailed is returned by a conditional StateStore update when the
 // state has changed since it was read
 var ErrConditionFailed = errors.New("state changed concurrently")
@@ -36,7 +40,10 @@ type StateStore interface {
 
 // DocumentStore defines the interface for retrieving documents from storage
 type DocumentStore interface {
-	GetDocument(ctx context.Context, bucket, key string) ([]byte, error)
+	// GetDocument fetches the document only if its ETag is still etag, so
+	// that what is sent is what was checked. Otherwise it returns
+	// ErrDocumentChanged.
+	GetDocument(ctx context.Context, bucket, key, etag string) ([]byte, error)
 	// DocumentETag returns the object's ETag, which changes with its content.
 	// It reports exists false, with no error, only if there is no such object.
 	DocumentETag(ctx context.Context, bucket, key string) (etag string, exists bool, err error)

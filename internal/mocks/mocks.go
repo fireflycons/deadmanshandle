@@ -136,11 +136,11 @@ func NewMockDocumentStore() *MockDocumentStore {
 	}
 }
 
-func (m *MockDocumentStore) GetDocument(ctx context.Context, bucket, key string) ([]byte, error) {
-	if docs, ok := m.Documents[bucket]; ok {
-		return docs[key], nil
+func (m *MockDocumentStore) GetDocument(ctx context.Context, bucket, key, etag string) ([]byte, error) {
+	if current, _, _ := m.DocumentETag(ctx, bucket, key); current != etag {
+		return nil, ports.ErrDocumentChanged
 	}
-	return nil, nil
+	return m.Documents[bucket][key], nil
 }
 
 // DocumentETag derives the ETag from the content, so replacing a document
