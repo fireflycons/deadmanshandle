@@ -30,6 +30,17 @@ variable "manage_dkim_dns_records" {
   default     = true
 }
 
+variable "dmarc_record" {
+  description = "Value of the DMARC TXT record to create at _dmarc.<domain of deployment.senderEmail> in the Route 53 public zone named after that domain (in this account), e.g. \"v=DMARC1; p=none; rua=mailto:dmarc@example.com\". The record covers all mail from the domain. Empty (the default) leaves DMARC unmanaged."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.dmarc_record == "" || startswith(var.dmarc_record, "v=DMARC1;")
+    error_message = "dmarc_record must be empty or start with \"v=DMARC1;\"."
+  }
+}
+
 variable "document_versioning" {
   description = "Enable versioning on the document bucket. Noncurrent versions are deleted after 30 days. False suspends versioning on a bucket that had it."
   type        = bool

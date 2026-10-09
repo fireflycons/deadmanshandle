@@ -7,6 +7,10 @@
 # With create_ses_identity false, an existing verified identity for the domain
 # is used as it is, and neither it nor its DKIM records are managed here.
 #
+# With dmarc_record set, the domain's DMARC record is created in Route 53 too.
+# It applies to all mail from the domain, not just this application's, so it
+# is managed independently of create_ses_identity.
+#
 # Verifying the sender does not lift the SES sandbox: until the account has
 # production access, mail is only delivered to verified recipients.
 
@@ -23,7 +27,7 @@ resource "aws_sesv2_email_identity" "sender" {
 }
 
 data "aws_route53_zone" "sender" {
-  count = var.create_ses_identity && var.manage_dkim_dns_records ? 1 : 0
+  count = (var.create_ses_identity && var.manage_dkim_dns_records) || var.dmarc_record != "" ? 1 : 0
 
   name         = local.sender_domain
   private_zone = false
@@ -38,4 +42,14 @@ resource "aws_route53_record" "dkim" {
   type    = "CNAME"
   ttl     = 1800
   records = ["${aws_sesv2_email_identity.sender[0].dkim_signing_attributes[0].tokens[count.index]}.dkim.amazonses.com"]
+}
+
+resource "aws_route53_record" "dmarc" {
+  count = var.dmarc_record != "" ? 1 : 0
+
+  zone_id = data.aws_route53_zone.sender[0].zone_id
+  name    = "_dmarc.${local.sender_domain}"
+  type    = "TXT"
+  ttl     = 3600
+  records = [var.dmarc_record]
 }

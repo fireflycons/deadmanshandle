@@ -85,6 +85,9 @@ Update these fields:
 - `manage_dkim_dns_records`: `true` if the domain's DNS is in Route 53 in this
   account (Terraform adds the records), otherwise `false` and add the records
   from the `ses_dkim_dns_records` output yourself
+- `dmarc_record`: optionally, the domain's DMARC record value, e.g.
+  `"v=DMARC1; p=none; rua=mailto:you@example.com"`, which Terraform creates in
+  Route 53; it covers all mail from the domain
 
 Request SES production access in the SES console; until then, mail only reaches
 verified addresses.

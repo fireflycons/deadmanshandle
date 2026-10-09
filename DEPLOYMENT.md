@@ -30,6 +30,16 @@ uses it as it is and never creates, changes or deletes it or its DKIM records,
 so `terraform destroy` leaves it alone. `manage_dkim_dns_records` is ignored
 and `ses_dkim_dns_records` is empty.
 
+**DMARC.** Set `dmarc_record` to the value of the domain's DMARC record, e.g.
+`"v=DMARC1; p=none; rua=mailto:dmarc@example.com"`, to have Terraform create
+it at `_dmarc.<domain>` in the same Route 53 zone. With a DMARC record, the
+DKIM-signed mail passes DMARC, even when forwarded, which helps keep it out of
+spam. The record covers all mail from the domain, so it is managed whatever
+`create_ses_identity` is, and `terraform destroy` deletes it. Leave it empty
+(the default) if the domain already has one or its DNS is elsewhere. To manage
+an existing record, import it first:
+`terraform import 'aws_route53_record.dmarc[0]' <zone-id>__dmarc.<domain>_TXT`.
+
 **Request SES production access.** A new account is in the SES sandbox, where
 mail is only delivered to verified addresses (200 a day). Recipients such as an
 executor or attorney cannot be expected to verify, so request production access
@@ -106,6 +116,8 @@ Key variables:
 - `create_ses_identity`: `false` to use an existing verified SES identity for
   the domain instead of creating one
 - `manage_dkim_dns_records`: Whether Terraform creates the DKIM records in Route 53
+- `dmarc_record`: The domain's DMARC record value, created in Route 53; empty
+  (the default) to leave DMARC alone
 - `aws_region`: Your preferred region
 - `document_versioning`: Versioning on the document bucket (default `false`).
   When `true`, old versions are deleted 30 days after being replaced or
@@ -150,6 +162,7 @@ Review the plan to ensure it will create the expected resources:
   from the config file's `timeout`
 - SES domain identity, unless `create_ses_identity` is false, and its DKIM
   records if `manage_dkim_dns_records` is true
+- The domain's DMARC record, if `dmarc_record` is set
 - SNS topic, owner email subscription and CloudWatch alarms
 - IAM role and policies
 

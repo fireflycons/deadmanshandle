@@ -3,6 +3,7 @@ application_name = "deadmanshandle"
 config_file_path = "../config.json"
 create_ses_identity = true # false if the domain of deployment.senderEmail in config.json is already a verified SES identity in this account and region
 manage_dkim_dns_records = true # false if that domain's DNS is not in Route 53 in this account
+dmarc_record = "" # e.g. "v=DMARC1; p=none; rua=mailto:dmarc@example.com" to create the domain's DMARC record in Route 53
 document_versioning = false # true to version the document bucket; old versions are kept for 30 days
 schedule_expression = "cron(0 2 * * ? *)" # 2 AM UTC daily
 
