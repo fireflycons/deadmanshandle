@@ -249,4 +249,4 @@ go test -cover ./...
 
 ## License
 
-MIT
+MIT; see [LICENSE](LICENSE).

@@ -79,6 +79,7 @@ deadmanshandle/
 ├── .gitattributes                        # LF line endings
 ├── .gitignore                            # Git ignore rules
 │
+├── LICENSE                               # MIT licence
 ├── README.md                             # Project documentation
 ├── QUICKSTART.md                         # Quick start guide
 ├── DEPLOYMENT.md                         # Deployment guide
