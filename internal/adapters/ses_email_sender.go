@@ -2,15 +2,21 @@ package adapters
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 	"mime"
+	"net/mail"
 	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/service/ses"
 	"github.com/aws/aws-sdk-go-v2/service/ses/types"
 )
+
+// senderName is the display name on every email; mail from a bare address
+// looks more like spam.
+const senderName = "Deadman's Handle"
 
 // SESEmailSender implements the EmailSender interface using AWS SES
 type SESEmailSender struct {
@@ -40,10 +46,12 @@ func (s *SESEmailSender) SendEmail(ctx context.Context, to, subject, body string
 }
 
 func (s *SESEmailSender) buildMessage(to, subject, body string, attachments map[string][]byte) string {
-	boundary := "===============boundary==============="
+	// A new boundary for each message: a fixed one is a spam fingerprint, and
+	// a document containing it would break the message
+	boundary := "=_" + rand.Text()
 	var message strings.Builder
 
-	fmt.Fprintf(&message, "From: %s\r\n", s.sender)
+	fmt.Fprintf(&message, "From: %s\r\n", (&mail.Address{Name: senderName, Address: s.sender}).String())
 	fmt.Fprintf(&message, "To: %s\r\n", to)
 	fmt.Fprintf(&message, "Subject: %s\r\n", subject)
 	fmt.Fprintf(&message, "MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"%s\"\r\n", boundary)

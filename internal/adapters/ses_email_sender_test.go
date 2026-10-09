@@ -16,7 +16,7 @@ func TestBuildMessageAddressesRecipient(t *testing.T) {
 
 	message := sender.buildMessage("recipient@example.com", "Subject", "Body", nil)
 
-	if !strings.Contains(message, "From: sender@example.com\r\n") {
+	if !strings.Contains(message, "From: \"Deadman's Handle\" <sender@example.com>\r\n") {
 		t.Errorf("Expected From header, got:\n%s", message)
 	}
 	if !strings.Contains(message, "To: recipient@example.com\r\n") {
@@ -46,7 +46,7 @@ func TestBuildMessageParses(t *testing.T) {
 		t.Fatalf("ReadMessage failed: %v", err)
 	}
 	for header, want := range map[string]string{
-		"From":         "sender@example.com",
+		"From":         "\"Deadman's Handle\" <sender@example.com>",
 		"To":           "recipient@example.com",
 		"Subject":      "The subject",
 		"Mime-Version": "1.0",
@@ -95,6 +95,26 @@ func TestBuildMessageParses(t *testing.T) {
 
 	if _, err := parts.NextPart(); err != io.EOF {
 		t.Errorf("Expected exactly two parts, got another (err %v)", err)
+	}
+}
+
+func TestBuildMessageBoundaryDiffersEachTime(t *testing.T) {
+	sender := &SESEmailSender{sender: "sender@example.com"}
+
+	boundary := func() string {
+		msg, err := mail.ReadMessage(strings.NewReader(sender.buildMessage("recipient@example.com", "Subject", "Body", nil)))
+		if err != nil {
+			t.Fatalf("ReadMessage failed: %v", err)
+		}
+		_, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+		if err != nil {
+			t.Fatalf("ParseMediaType failed: %v", err)
+		}
+		return params["boundary"]
+	}
+
+	if first, second := boundary(), boundary(); first == "" || first == second {
+		t.Errorf("Expected two different boundaries, got %q and %q", first, second)
 	}
 }
 
