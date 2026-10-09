@@ -27,6 +27,12 @@ aws configure
 
 ## 2. Clone and Build (2 minutes)
 
+To skip building (and installing Go), download a
+[release](https://github.com/fireflycons/deadmanshandle/releases) instead and
+follow [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release)
+steps 1 and 2; then continue here from step 3, working in the unpacked
+directory.
+
 ```bash
 # Clone the repository
 git clone <repo-url>

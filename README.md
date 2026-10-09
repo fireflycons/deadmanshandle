@@ -136,7 +136,10 @@ make clean
 2. Set `deployment.senderEmail` in it to an address whose domain you control.
    Terraform verifies the domain in SES with DKIM; request SES production
    access so that unverified recipients can receive mail
-3. Run `make build`; Terraform deploys the zipped binaries
+3. Run `make build`; Terraform deploys the zipped binaries. Or skip building:
+   each [release](https://github.com/fireflycons/deadmanshandle/releases) has
+   the pre-built Lambdas, the Terraform configuration and the example configs
+   (see [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release))
 
 ### Deploy with Terraform
 

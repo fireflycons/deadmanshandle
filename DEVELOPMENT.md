@@ -448,8 +448,12 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
 - **Release** (`release.yml`), on a push to `master` (a merged pull request):
   runs the CI checks, builds the Lambdas, and creates the GitHub release
   `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and `docwatch.zip`,
-  each with an executable `bootstrap` (linux/arm64), plus `SHA256SUMS`. The
-  notes list the commits since the previous release.
+  each with an executable `bootstrap` (linux/arm64);
+  `deadmanshandle-terraform-v<VERSION>.tar.gz`, with `terraform/`,
+  `config.example.json` and `LICENSE` (from `git archive`, so tracked files
+  only, without `.tflint.hcl`); and `SHA256SUMS`. The notes link to
+  [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
+  the commits since the previous release.
 
 The version is in `VERSION` at the root, as `MAJOR.MINOR.PATCH`. **Bump it in
 every pull request to `master`**: the pull request fails if `v<VERSION>` is

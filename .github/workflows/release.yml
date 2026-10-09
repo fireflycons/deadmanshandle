@@ -37,14 +37,21 @@ jobs:
       - name: Build
         run: make build
 
-      # Each zip holds an executable bootstrap at its root, ready for Lambda
+      # Each zip holds an executable bootstrap at its root, ready for Lambda.
+      # The tarball has the Terraform configuration and example configs, laid
+      # out as in the repository, so the zips unpack into its bin/ directory.
       - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir dist
           for fn in http scheduled docwatch; do
             (cd "bin/$fn" && zip -X -q "../../dist/$fn.zip" bootstrap)
           done
-          (cd dist && sha256sum *.zip > SHA256SUMS)
+          git archive --format=tar.gz --prefix="deadmanshandle-v$VERSION/" \
+            -o "dist/deadmanshandle-terraform-v$VERSION.tar.gz" \
+            HEAD terraform config.example.json LICENSE ':!terraform/.tflint.hcl'
+          (cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS)
 
       - name: Release notes
         env:
@@ -52,6 +59,8 @@ jobs:
         run: |
           prev=$(git tag --merged HEAD -l 'v[0-9]*' --sort=-v:refname | head -n 1)
           {
+            echo "To deploy without building, see [Deploying from a Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/v${VERSION}/DEPLOYMENT.md#deploying-from-a-release)."
+            echo
             if [[ -n $prev ]]; then
               echo "## Changes since $prev"
             else

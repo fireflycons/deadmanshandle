@@ -1,12 +1,114 @@
 # Deployment Guide
 
+You don't need to build anything to deploy. Each
+[release](https://github.com/fireflycons/deadmanshandle/releases) has the
+pre-built Lambda binaries, the Terraform configuration and the example
+configs; see [Deploying from a Release](#deploying-from-a-release). To build
+from source instead, clone the repository and see
+[Build the Application](#build-the-application).
+
 ## Prerequisites
 
 1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, DynamoDB, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
-2. **Go 1.26+** (see `go.mod`): For building
-3. **Terraform 1.5+**: For infrastructure deployment
-4. **AWS CLI**: Configured with credentials
-5. **Make**: For build automation (optional but recommended)
+2. **Terraform 1.5+**: For infrastructure deployment
+3. **AWS CLI**: Configured with credentials
+4. **Go 1.26+** (see `go.mod`): Only to build from source
+5. **Make**: Only to build from source (optional but recommended)
+
+## Deploying from a Release
+
+### 1. Download and Verify
+
+Pick a version from the
+[releases page](https://github.com/fireflycons/deadmanshandle/releases) and
+download its files: `deadmanshandle-terraform-<version>.tar.gz` (the Terraform
+configuration, example configs and licence), `http.zip`, `scheduled.zip` and
+`docwatch.zip` (the Lambdas, built for linux/arm64), and `SHA256SUMS`.
+
+Bash (Linux, macOS, Git Bash):
+
+```bash
+VERSION=v0.1.0   # the release you want
+BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
+mkdir deadmanshandle-download && cd deadmanshandle-download
+for f in "deadmanshandle-terraform-$VERSION.tar.gz" http.zip scheduled.zip docwatch.zip SHA256SUMS; do
+  curl -fsSLO "$BASE/$f"
+done
+sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
+```
+
+PowerShell:
+
+```powershell
+$Version = 'v0.1.0'   # the release you want
+$Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
+New-Item -ItemType Directory deadmanshandle-download | Set-Location
+foreach ($f in "deadmanshandle-terraform-$Version.tar.gz", 'http.zip', 'scheduled.zip', 'docwatch.zip', 'SHA256SUMS') {
+    Invoke-WebRequest "$Base/$f" -OutFile $f
+}
+Get-Content SHA256SUMS | ForEach-Object {
+    $hash, $file = $_ -split '\s+', 2
+    if ((Get-FileHash $file.TrimStart('*') -Algorithm SHA256).Hash -ne $hash) { throw "Checksum mismatch: $file" }
+}
+```
+
+With the GitHub CLI, `gh release download v0.1.0 -R fireflycons/deadmanshandle`
+downloads them all.
+
+### 2. Unpack
+
+The tarball unpacks into `deadmanshandle-<version>/`, laid out like the
+repository. Unzip each Lambda into its `bin/` directory there, where Terraform
+expects it:
+
+```bash
+tar -xzf "deadmanshandle-terraform-$VERSION.tar.gz"
+cd "deadmanshandle-$VERSION"
+for fn in http scheduled docwatch; do
+  mkdir -p "bin/$fn" && unzip -q "../$fn.zip" -d "bin/$fn"
+done
+```
+
+```powershell
+tar -xzf "deadmanshandle-terraform-$Version.tar.gz"
+Set-Location "deadmanshandle-$Version"
+foreach ($fn in 'http', 'scheduled', 'docwatch') { Expand-Archive "..\$fn.zip" -DestinationPath "bin\$fn" }
+```
+
+The result:
+
+```
+deadmanshandle-v0.1.0/
+├── bin/{http,scheduled,docwatch}/bootstrap
+├── terraform/
+├── config.example.json
+└── LICENSE
+```
+
+On Windows the `bootstrap` files lose their executable bit; that doesn't
+matter, because Terraform sets it when it zips them for Lambda.
+
+### 3. Configure and Deploy
+
+Follow [Pre-deployment Setup](#pre-deployment-setup) and
+[Deploy Infrastructure](#deploy-infrastructure) below, working in
+`deadmanshandle-<version>/`: `config.json` goes next to `terraform/`, and you
+run Terraform from `terraform/`. Skip
+[Build the Application](#build-the-application).
+
+### Upgrading to a Later Release
+
+Terraform keeps its state in `terraform/terraform.tfstate`, in the directory
+you deployed from. Keep that directory, and back the state file up: without
+it, Terraform can't update or destroy what it created.
+
+To upgrade, download and unpack the new release as above, then copy across
+your `config.json`, `terraform/terraform.tfvars` and
+`terraform/terraform.tfstate` from the old directory, and run
+`terraform init`, `terraform plan` and `terraform apply` from the new
+`terraform/`. The plan shows the Lambdas updating; the configuration and the
+countdown are not reset (see
+[Updating the Configuration](#updating-the-configuration)).
 
 ## Pre-deployment Setup
 
@@ -47,7 +149,8 @@ in the SES console (Account dashboard) before relying on the handle.
 
 ### 2. Create Configuration File
 
-Create `config.json` in the project root:
+Create `config.json` in the top directory (the repository root, or
+`deadmanshandle-<version>/` for a release):
 
 ```bash
 cp config.example.json config.json
@@ -124,6 +227,8 @@ Key variables:
   deleted. Setting it back to `false` suspends versioning
 
 ## Build the Application
+
+Only when building from source; skip this if you deployed from a release.
 
 ```bash
 # Build the Lambda binaries
