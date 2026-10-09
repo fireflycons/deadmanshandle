@@ -20,7 +20,9 @@ brew install make
 brew install terraform
 ```
 
-On Windows, use Git Bash for `make` and the shell commands in this guide.
+The Makefile needs GNU make 4.x and works from any shell, including
+PowerShell or cmd on Windows. On Windows, use Git Bash for the other shell
+commands in this guide.
 
 ### 2. Clone and Setup
 
