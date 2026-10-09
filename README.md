@@ -250,3 +250,16 @@ go test -cover ./...
 ## License
 
 MIT
+
+
+```mermaid
+architecture-beta
+    group vpc(logos:aws-vpc)[VPC]
+
+    service api(logos:aws-api-gateway)[API Gateway] in vpc
+    service lambda(logos:aws-lambda)[Lambda Function] in vpc
+    service db(logos:aws-rds)[Amazon RDS] in vpc
+
+    api:R --> L -- lambda:L
+    lambda:B --> R -- db:T
+```
