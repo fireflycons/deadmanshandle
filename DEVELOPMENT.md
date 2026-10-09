@@ -460,6 +460,12 @@ already a tag, or isn't greater than the latest release and than `VERSION` on
 bash .github/scripts/check-version.sh
 ```
 
+## Architecture Diagram
+
+`docs/architecture.png` is drawn by `tools/architecture_diagram.py`, using
+Python's `diagrams` package (official AWS icons) and Graphviz. When the
+infrastructure changes, edit the script and rerun it; its docstring says how.
+
 ## Troubleshooting Development
 
 ### Module Issues

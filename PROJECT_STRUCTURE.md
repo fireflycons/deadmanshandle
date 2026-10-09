@@ -68,6 +68,12 @@ deadmanshandle/
 │   ├── scheduled/bootstrap               # Scheduled handler binary
 │   └── docwatch/bootstrap                # Document watch handler binary
 │
+├── docs/
+│   └── architecture.png                  # AWS architecture diagram
+│
+├── tools/
+│   └── architecture_diagram.py           # Draws docs/architecture.png (Python, diagrams)
+│
 ├── go.mod                                # Go module definition
 ├── go.sum                                # Go dependencies checksums
 ├── Makefile                              # Build automation
