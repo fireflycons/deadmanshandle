@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    name: Build and release
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # history and tags, for the release notes
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Check VERSION
+        id: version
+        run: bash .github/scripts/check-version.sh
+
+      - name: Build
+        run: make build
+
+      # Each zip holds an executable bootstrap at its root, ready for Lambda
+      - name: Package
+        run: |
+          mkdir dist
+          for fn in http scheduled docwatch; do
+            (cd "bin/$fn" && zip -X -q "../../dist/$fn.zip" bootstrap)
+          done
+          (cd dist && sha256sum *.zip > SHA256SUMS)
+
+      - name: Release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          prev=$(git tag --merged HEAD -l 'v[0-9]*' --sort=-v:refname | head -n 1)
+          {
+            if [[ -n $prev ]]; then
+              echo "## Changes since $prev"
+            else
+              echo "## Changes"
+            fi
+            echo
+            git log --no-merges --format='- %s (%h)' "${prev:+$prev..}HEAD"
+            if [[ -n $prev ]]; then
+              echo
+              echo "**Full changelog:** ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/${prev}...v${VERSION}"
+            fi
+          } > notes.md
+          cat notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          gh release create "v$VERSION" dist/* \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file notes.md

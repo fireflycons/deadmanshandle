@@ -434,6 +434,32 @@ terraform apply
 Don't upload code with `aws lambda update-function-code`: the zips in
 `terraform/build/` are only refreshed by Terraform, so they may be stale.
 
+## CI and Releases
+
+GitHub Actions runs these workflows (in `.github/workflows/`):
+
+- **CI** (`ci.yml`), on a push to any branch except `master` and on a pull
+  request to `master`: golangci-lint and `go test ./...`; `terraform fmt
+  -check`, `terraform validate` and TFLint (with the AWS ruleset, configured in
+  `terraform/.tflint.hcl`). On a pull request it also checks the version (below).
+  The `CI gate` job passes only if all of these do; a ruleset on `master`
+  requires it, so a pull request can't be merged until it passes against the
+  latest `master`.
+- **Release** (`release.yml`), on a push to `master` (a merged pull request):
+  runs the CI checks, builds the Lambdas, and creates the GitHub release
+  `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and `docwatch.zip`,
+  each with an executable `bootstrap` (linux/arm64), plus `SHA256SUMS`. The
+  notes list the commits since the previous release.
+
+The version is in `VERSION` at the root, as `MAJOR.MINOR.PATCH`. **Bump it in
+every pull request to `master`**: the pull request fails if `v<VERSION>` is
+already a tag, or isn't greater than the latest release and than `VERSION` on
+`master`. The release fails too if the tag exists. To run the same check locally:
+
+```bash
+bash .github/scripts/check-version.sh
+```
+
 ## Troubleshooting Development
 
 ### Module Issues
@@ -461,6 +487,7 @@ Before submitting a pull request:
 - [ ] Security review: no hardcoded secrets, nothing sensitive logged
 - [ ] Error handling: all errors handled
 - [ ] Terraform changes valid: `terraform fmt -check`, `terraform validate`
+- [ ] `VERSION` bumped
 
 ## Useful Commands
 

@@ -60,6 +60,7 @@ deadmanshandle/
 │   ├── alarms.tf                         # SNS topic and CloudWatch alarms
 │   ├── outputs.tf                        # Output values
 │   ├── terraform.tfvars.example          # Example variables file
+│   ├── .tflint.hcl                       # TFLint rules (AWS ruleset)
 │   └── build/                            # Lambda zips (generated)
 │
 ├── bin/                                  # Compiled binaries (generated)
@@ -70,6 +71,11 @@ deadmanshandle/
 ├── go.mod                                # Go module definition
 ├── go.sum                                # Go dependencies checksums
 ├── Makefile                              # Build automation
+├── VERSION                               # Release version (bumped in each PR)
+├── .github/
+│   ├── workflows/ci.yml                  # Lint and test on push and PR
+│   ├── workflows/release.yml             # Build and release on merge to master
+│   └── scripts/check-version.sh          # Checks VERSION is an unused, higher version
 ├── .gitattributes                        # LF line endings
 ├── .gitignore                            # Git ignore rules
 │
