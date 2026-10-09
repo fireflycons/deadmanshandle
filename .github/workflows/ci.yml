@@ -53,12 +53,13 @@ jobs:
         with:
           tflint_version: v0.64.0
 
+      # config.json is not committed; the example's values are enough for the rules
       - name: TFLint
         env:
           GITHUB_TOKEN: ${{ github.token }} # avoids rate limits when downloading the plugin
         run: |
           tflint --init
-          tflint --format compact
+          tflint --format compact --var=config_file_path=../config.example.json
 
   version:
     name: Next version is unused
