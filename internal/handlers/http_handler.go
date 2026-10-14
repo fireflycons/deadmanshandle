@@ -1,0 +1,111 @@
+package handlers
+
+import (
+	"context"
+	"encoding/json"
+	"log/slog"
+	"time"
+
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/fireflycons/deadmanshandle/internal/config"
+	"github.com/fireflycons/deadmanshandle/internal/domain"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
+)
+
+// HTTPHandler handles HTTP API Gateway requests
+type HTTPHandler struct {
+	configStore  ports.ConfigStore
+	stateStore   ports.StateStore
+	service      *domain.DeadmansHandleService
+	keyValidator ports.APIKeyValidator
+	paramName    string
+}
+
+// NewHTTPHandler creates a new HTTP handler
+func NewHTTPHandler(
+	configStore ports.ConfigStore,
+	stateStore ports.StateStore,
+	service *domain.DeadmansHandleService,
+	keyValidator ports.APIKeyValidator,
+	parameterName string,
+) *HTTPHandler {
+	return &HTTPHandler{
+		configStore:  configStore,
+		stateStore:   stateStore,
+		service:      service,
+		keyValidator: keyValidator,
+		paramName:    parameterName,
+	}
+}
+
+// HTTPResponse represents the response structure
+type HTTPResponse struct {
+	StatusCode int    `json:"statusCode"`
+	Message    string `json:"message"`
+	NewTimeout string `json:"newTimeout,omitempty"`
+}
+
+// Handle processes HTTP API Gateway requests
+func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
+	log := slog.With("sourceIp", request.RequestContext.HTTP.SourceIP)
+
+	// Extract and validate API key
+	apiKey := request.Headers["x-api-key"]
+	if apiKey == "" {
+		log.Warn("Check-in rejected: missing API key")
+		return h.response(401, "Missing API key"), nil
+	}
+
+	// Get configuration
+	configData, err := h.configStore.GetConfig(ctx, h.paramName)
+	if err != nil {
+		log.Error("Check-in failed: retrieving configuration", "error", err)
+		return h.response(500, "Failed to retrieve configuration"), nil
+	}
+
+	cfg, err := config.ParseConfig(configData)
+	if err != nil {
+		log.Error("Check-in failed: parsing configuration", "error", err)
+		return h.response(500, "Failed to parse configuration"), nil
+	}
+
+	// Validate API key
+	if !h.keyValidator.ValidateAPIKey(ctx, apiKey, cfg.APIKey) {
+		log.Warn("Check-in rejected: invalid API key")
+		return h.response(401, "Invalid API key"), nil
+	}
+
+	// Process check-in. Setting the timeout also clears the delivery state,
+	// atomically, so a scheduled run cannot overwrite the check-in.
+	newTimeout := h.service.CheckIn(cfg)
+	if err := h.stateStore.CheckIn(ctx, newTimeout); err != nil {
+		log.Error("Check-in failed: saving the new timeout", "error", err)
+		return h.response(500, "Failed to save check-in"), nil
+	}
+
+	log.Info("Check-in successful", "newTimeout", newTimeout)
+
+	resp := HTTPResponse{
+		StatusCode: 200,
+		Message:    "Check-in successful",
+		NewTimeout: newTimeout.Format(time.RFC3339),
+	}
+
+	respBody, _ := json.Marshal(resp)
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: 200,
+		Body:       string(respBody),
+	}, nil
+}
+
+func (h *HTTPHandler) response(statusCode int, message string) events.APIGatewayV2HTTPResponse {
+	resp := HTTPResponse{
+		StatusCode: statusCode,
+		Message:    message,
+	}
+	body, _ := json.Marshal(resp)
+	return events.APIGatewayV2HTTPResponse{
+		StatusCode: statusCode,
+		Body:       string(body),
+	}
+}
