@@ -10,6 +10,14 @@ dist/
 build/
 *.zip
 
+# Android
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.jks
+*.keystore
+
 # Terraform
 *.tfstate
 *.tfstate.*
