@@ -1,6 +1,6 @@
 output "api_endpoint" {
   description = "HTTP API Gateway endpoint"
-  value       = trimsuffix(aws_apigatewayv2_stage.http_api_stage.invoke_url, "/") # the $default stage's URL ends in "/"
+  value       = local.api_endpoint
 }
 
 output "document_bucket_name" {
@@ -31,6 +31,11 @@ output "state_table_name" {
 output "config_parameter_name" {
   description = "Parameter Store configuration parameter name"
   value       = aws_ssm_parameter.config.name
+}
+
+output "api_endpoint_parameter_name" {
+  description = "Parameter Store parameter holding the API endpoint, read by qrconfig -aws"
+  value       = aws_ssm_parameter.api_endpoint.name
 }
 
 output "alarm_topic_arn" {

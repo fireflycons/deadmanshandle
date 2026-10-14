@@ -1,3 +1,7 @@
+locals {
+  api_endpoint = trimsuffix(aws_apigatewayv2_stage.http_api_stage.invoke_url, "/") # the $default stage's URL ends in "/"
+}
+
 resource "aws_apigatewayv2_api" "http_api" {
   name          = "${var.application_name}-api"
   protocol_type = "HTTP"

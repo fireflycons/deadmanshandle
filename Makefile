@@ -1,4 +1,4 @@
-.PHONY: help build test clean deploy local
+.PHONY: help build test clean deploy local qrcode
 
 # Native Windows make runs recipes in cmd.exe, whether or not an sh.exe is on
 # PATH. Elsewhere (macOS, Linux, MSYS2/Cygwin make) they run in sh.
@@ -20,6 +20,7 @@ help:
 	@$(info $(indent)clean       - Clean build artifacts)
 	@$(info $(indent)deploy      - Deploy with Terraform)
 	@$(info $(indent)local       - Run local tests)
+	@$(info $(indent)qrcode      - Write checkin-qr.png to set up the Android app (QRFLAGS=-aws reads AWS))
 	@exit 0
 
 # Exported so that go build sees them in either shell
@@ -55,3 +56,9 @@ deploy: build
 local:
 	@echo Running local tests with code coverage...
 	@go test -v -cover ./...
+
+# Built for this machine, unlike the Lambdas. Reads terraform/terraform.tfstate
+# and config.json, or with QRFLAGS=-aws the parameters in AWS. The PNG holds
+# the API key, so delete it after scanning.
+qrcode:
+	@go run ./cmd/qrconfig $(QRFLAGS)

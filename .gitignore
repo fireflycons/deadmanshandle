@@ -33,6 +33,9 @@ Thumbs.db
 .env.local
 config.json
 
+# QR code holding the API key (make qrcode)
+checkin-qr.png
+
 # Logs
 logs/
 *.log

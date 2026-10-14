@@ -11,6 +11,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/ses v1.42.2
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.1
 	github.com/aws/smithy-go v1.28.4
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 )
 
 require (
