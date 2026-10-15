@@ -17,8 +17,10 @@ import javax.crypto.spec.GCMParameterSpec
  *
  * Creating the key needs a secure lock screen (KeyguardManager.isDeviceSecure);
  * without one, [encryptCipher] throws. Android invalidates the key if the
- * screen lock is removed or a new fingerprint is enrolled, and deletes it when
- * the app is uninstalled.
+ * screen lock is removed, and deletes it when the app is uninstalled.
+ * Enrolling a fingerprint does not invalidate it: that only applies to keys
+ * usable with a biometric alone, and this one also accepts the device
+ * credential, which enrolling needs anyway.
  */
 class ApiKeyKeystore {
     private val keyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }

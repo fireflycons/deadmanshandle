@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Deadman\'s Handle</string>
+
+    <string name="config_title">Set up check-in</string>
+    <string name="config_explanation">Enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
+    <string name="endpoint_label">API endpoint</string>
+    <string name="endpoint_invalid">Enter an https URL, such as https://abc123.execute-api.eu-west-1.amazonaws.com</string>
+    <string name="api_key_label">API key</string>
+    <string name="api_key_invalid">Enter the API key</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="save_prompt_title">Save the check-in config</string>
+    <string name="no_screen_lock">Set a screen lock (PIN, pattern or password) in Settings first. The API key can only be stored on a device that has one.</string>
+    <string name="save_failed">The config could not be saved: %1$s</string>
+    <string name="config_invalidated">The screen lock on this device was removed, so the saved config can no longer be used. Enter it again.</string>
+
+    <string name="configured_title">Ready to check in</string>
+    <string name="configured_endpoint">Endpoint: %1$s</string>
+    <string name="change_config">Change config</string>
 </resources>
