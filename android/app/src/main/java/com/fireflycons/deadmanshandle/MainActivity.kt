@@ -22,19 +22,28 @@ import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.fireflycons.deadmanshandle.auth.Authoriser
+import com.fireflycons.deadmanshandle.checkin.CheckInClient
+import com.fireflycons.deadmanshandle.checkin.CheckInResult
+import com.fireflycons.deadmanshandle.checkin.formatDeadline
 import com.fireflycons.deadmanshandle.config.ApiKeyKeystore
 import com.fireflycons.deadmanshandle.config.CheckInConfig
 import com.fireflycons.deadmanshandle.config.ConfigStore
 import com.fireflycons.deadmanshandle.config.QrPayload
+import com.fireflycons.deadmanshandle.ui.CheckInStatus
 import com.fireflycons.deadmanshandle.ui.ConfigEntryScreen
 import com.fireflycons.deadmanshandle.ui.ConfiguredScreen
 import java.security.GeneralSecurityException
+import java.time.ZoneId
+import java.util.Locale
+import java.util.concurrent.Executors
 
 // A FragmentActivity, as BiometricPrompt needs
 class MainActivity : FragmentActivity() {
     private lateinit var store: ConfigStore
     private lateinit var keystore: ApiKeyKeystore
     private lateinit var authoriser: Authoriser
+    private val client = CheckInClient()
+    private val executor = Executors.newSingleThreadExecutor()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -51,6 +60,8 @@ class MainActivity : FragmentActivity() {
                 var message by remember {
                     mutableStateOf(if (invalidated) getString(R.string.config_invalidated) else null)
                 }
+                var status by remember { mutableStateOf<CheckInStatus?>(null) }
+                var checkingIn by remember { mutableStateOf(false) }
 
                 Scaffold { padding ->
                     val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
@@ -83,7 +94,30 @@ class MainActivity : FragmentActivity() {
                             modifier = modifier,
                         )
                     } else {
-                        ConfiguredScreen(saved, onChange = { editing = true }, modifier = modifier)
+                        ConfiguredScreen(
+                            endpoint = saved,
+                            status = status,
+                            checkingIn = checkingIn,
+                            onCheckIn = {
+                                status = null
+                                checkIn(
+                                    onStarted = { checkingIn = true },
+                                    onResult = {
+                                        checkingIn = false
+                                        status = it
+                                    },
+                                    onInvalidated = {
+                                        endpoint = null
+                                        message = getString(R.string.config_invalidated)
+                                    },
+                                )
+                            },
+                            onChange = {
+                                status = null
+                                editing = true
+                            },
+                            modifier = modifier,
+                        )
                     }
                 }
             }
@@ -158,6 +192,64 @@ class MainActivity : FragmentActivity() {
             },
             onError = { onError(getString(R.string.save_failed, it)) },
         )
+    }
+
+    /**
+     * Opens the API key, once the user authorises it, and checks in on a
+     * background thread. A key invalidated since startup clears the config
+     * and calls [onInvalidated] instead.
+     */
+    private fun checkIn(
+        onStarted: () -> Unit,
+        onResult: (CheckInStatus) -> Unit,
+        onInvalidated: () -> Unit,
+    ) {
+        val sealed = store.sealedApiKey ?: return
+        val cipher = keystore.decryptCipher(sealed)
+        if (cipher == null) {
+            store.clear()
+            onInvalidated()
+            return
+        }
+        authoriser.authorise(
+            cipher,
+            getString(R.string.checkin_prompt_title),
+            onAuthorised = { authorised ->
+                val config = try {
+                    store.load(authorised)
+                } catch (e: GeneralSecurityException) {
+                    onResult(CheckInStatus(getString(R.string.checkin_failed, e.toString()), isError = true))
+                    return@authorise
+                } ?: return@authorise
+                onStarted()
+                executor.execute {
+                    val result = client.checkIn(config)
+                    runOnUiThread { onResult(describe(result)) }
+                }
+            },
+            onError = { onResult(CheckInStatus(getString(R.string.checkin_failed, it), isError = true)) },
+        )
+    }
+
+    private fun describe(result: CheckInResult) = when (result) {
+        is CheckInResult.Success -> CheckInStatus(
+            getString(
+                R.string.checked_in,
+                formatDeadline(result.newTimeout, ZoneId.systemDefault(), Locale.getDefault()),
+            ),
+            isError = false,
+        )
+        CheckInResult.Unauthorised -> CheckInStatus(getString(R.string.checkin_unauthorised), isError = true)
+        CheckInResult.Throttled -> CheckInStatus(getString(R.string.checkin_throttled), isError = true)
+        is CheckInResult.Failed -> CheckInStatus(
+            if (result.message == null) {
+                getString(R.string.checkin_http_failed, result.status)
+            } else {
+                getString(R.string.checkin_http_failed_message, result.status, result.message)
+            },
+            isError = true,
+        )
+        is CheckInResult.Unreachable -> CheckInStatus(getString(R.string.checkin_unreachable, result.reason), isError = true)
     }
 
     private companion object {

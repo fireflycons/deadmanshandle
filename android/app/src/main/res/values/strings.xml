@@ -26,4 +26,14 @@
     <string name="configured_title">Ready to check in</string>
     <string name="configured_endpoint">Endpoint: %1$s</string>
     <string name="change_config">Change config</string>
+    <string name="check_in">Check in</string>
+    <string name="checking_in">Checking in…</string>
+    <string name="checkin_prompt_title">Check in</string>
+    <string name="checked_in">Checked in. The new deadline is %1$s.</string>
+    <string name="checkin_unauthorised">The API rejected the API key. Change the config, or scan the setup code again.</string>
+    <string name="checkin_throttled">The API allows about one request a minute. Try again shortly.</string>
+    <string name="checkin_http_failed">Check-in failed: the API returned HTTP %1$d.</string>
+    <string name="checkin_http_failed_message">Check-in failed: the API returned HTTP %1$d (%2$s).</string>
+    <string name="checkin_unreachable">Could not reach the API: %1$s</string>
+    <string name="checkin_failed">Check-in failed: %1$s</string>
 </resources>
