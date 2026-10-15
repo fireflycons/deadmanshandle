@@ -24,6 +24,11 @@ local.properties
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
+# A deployment's own settings, such as its state backend
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # IDE
 .vscode/
