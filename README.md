@@ -18,6 +18,9 @@ The application uses hexagonal architecture with clear separation between:
 ## Features
 
 - **HTTP API Check-in**: Owner checks in via HTTP API to reset timeout
+- **Android App**: Checks in with a fingerprint or the screen lock, and is set
+  up by scanning a QR code; see
+  [Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app)
 - **Scheduled Event Processing**: Daily EventBridge event checks timeout and sends warnings
 - **Document Distribution**: On timeout, document from S3 is emailed to recipients. For additional security you should encrypt this document yourself prior to uploading to S3 and ensure the recipient(s) have the key and the knowledge to decrypt it upon receipt. A good choice is to put files into a [7-Zip](https://www.7-zip.org/) password protected archive which uses AES-256 encryption.
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
@@ -30,14 +33,18 @@ The application uses hexagonal architecture with clear separation between:
 .
 ├── cmd/
 │   ├── http/          # HTTP Lambda handler
-│   └── scheduled/     # Scheduled event Lambda handler
+│   ├── scheduled/     # Scheduled event Lambda handler
+│   ├── docwatch/      # Document change (S3 upload) Lambda handler
+│   └── qrconfig/      # CLI: QR code that sets up the Android app
 ├── internal/
 │   ├── adapters/      # AWS service implementations
 │   ├── config/        # Configuration models
 │   ├── domain/        # Core business logic
 │   ├── handlers/      # Lambda handlers
 │   ├── mocks/         # Mock interfaces for testing
-│   └── ports/         # Port interfaces
+│   ├── ports/         # Port interfaces
+│   └── qrconfig/      # The QR code's payload
+├── android/           # Android check-in app (Kotlin)
 ├── terraform/         # Infrastructure as Code
 ├── go.mod            # Go module definition
 └── Makefile          # Build and deployment targets
@@ -169,6 +176,8 @@ receive alarms. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 
 Headers:
 - `x-api-key`: Your API key from configuration
+
+The Android app makes this request for you.
 
 Response:
 ```json

@@ -8,8 +8,10 @@ deadmanshandle/
 │   │   └── main.go                       # HTTP API Gateway handler
 │   ├── scheduled/
 │   │   └── main.go                       # EventBridge scheduled handler
-│   └── docwatch/
-│       └── main.go                       # S3 upload (EventBridge) handler
+│   ├── docwatch/
+│   │   └── main.go                       # S3 upload (EventBridge) handler
+│   └── qrconfig/
+│       └── main.go                       # CLI: QR code that sets up the Android app
 │
 ├── internal/                             # Application packages
 │   ├── adapters/                         # AWS service implementations
@@ -42,8 +44,30 @@ deadmanshandle/
 │   ├── mocks/                            # Mock implementations for testing
 │   │   └── mocks.go                      # Mocks of the ports
 │   │
-│   └── ports/                            # Port interfaces (hexagonal architecture)
-│       └── ports.go                      # Service interfaces
+│   ├── ports/                            # Port interfaces (hexagonal architecture)
+│   │   └── ports.go                      # Service interfaces
+│   │
+│   └── qrconfig/                         # The setup QR code's payload
+│       ├── qrconfig.go                   # Endpoint from the state, key from the config, JSON
+│       └── qrconfig_test.go              # Payload tests
+│
+├── android/                              # Android check-in app (Gradle project)
+│   ├── app/
+│   │   ├── build.gradle.kts              # App build: version from VERSION, signing, R8
+│   │   ├── proguard-rules.pro            # R8 keep rules (ML Kit)
+│   │   └── src/
+│   │       ├── main/                     # Manifest, resources and Kotlin source
+│   │       │   └── java/com/fireflycons/deadmanshandle/
+│   │       │       ├── MainActivity.kt   # Wires the screens to storage, prompt and API
+│   │       │       ├── auth/             # BiometricPrompt: fingerprint or screen lock
+│   │       │       ├── checkin/          # Check-in request and its result
+│   │       │       ├── config/           # Config, Keystore storage, QR payload
+│   │       │       └── ui/               # Compose screens
+│   │       └── test/                     # JVM unit tests
+│   ├── gradle/                           # Version catalogue, wrapper, daemon JDK
+│   ├── build.gradle.kts                  # Root build
+│   ├── settings.gradle.kts               # Repositories and modules
+│   └── gradlew, gradlew.bat              # Gradle wrapper
 │
 ├── terraform/                            # Infrastructure as Code
 │   ├── provider.tf                       # AWS provider and Terraform version
@@ -112,6 +136,11 @@ deadmanshandle/
 - **docwatch**: S3 upload (EventBridge) handler
   - Reports changes to the document's content to the owner
 
+- **qrconfig**: Command-line tool, not a Lambda
+  - Writes a PNG QR code that sets up the Android app (`make qrcode`)
+  - Reads the endpoint from the Terraform state and the API key from the
+    config file, or both from Parameter Store with `-aws`
+
 Each `main.go` sets up JSON logging, creates the AWS clients and adapters once
 at init, and starts the Lambda runtime.
 
@@ -175,6 +204,22 @@ Defines contracts for external dependencies:
 - **DocumentStore**: Retrieve documents
 - **EmailSender**: Send an email, with optional attachments
 - **APIKeyValidator**: Validate API keys
+
+### `internal/qrconfig/` - Setup QR Code
+- Builds the QR code's JSON payload, `{"v":1,"endpoint":"…","apiKey":"…"}`;
+  the app rejects a version it doesn't know
+
+### `android/` - Android Check-in App
+Kotlin and Jetpack Compose, for Android 11 and later:
+- **config/**: The endpoint and API key, the key encrypted with an Android
+  Keystore key that needs the fingerprint or screen lock for every use; and
+  the QR payload's parser
+- **auth/**: Authorises the Keystore key with BiometricPrompt
+- **checkin/**: `POST <endpoint>/checkin` and its result
+- **ui/**: The config entry screen (by hand or by QR scan) and the check-in
+  screen
+
+See [DEVELOPMENT.md](DEVELOPMENT.md#android-app) for building it.
 
 ### `terraform/` - Infrastructure as Code
 Terraform files defining AWS resources:
@@ -257,9 +302,12 @@ service := domain.NewDeadmansHandleServiceWithTime(now)
 
 ### Local Development
 ```bash
-make build      # Builds both handlers
-make test       # Runs tests
-make clean      # Removes artifacts
+make build          # Builds the Lambda handlers
+make test           # Runs tests
+make clean          # Removes artifacts
+make qrcode         # Writes the setup QR code, checkin-qr.png
+make android-test   # Android unit tests and lint
+make android        # Android release APK
 ```
 
 ### Production Build
@@ -290,6 +338,7 @@ make clean      # Removes artifacts
 ### Go Dependencies (Standard Library Focus)
 - `github.com/aws/aws-lambda-go`: Lambda runtime
 - `github.com/aws/aws-sdk-go-v2`: AWS SDK
+- `github.com/skip2/go-qrcode`: QR codes, in `cmd/qrconfig` only
 - Standard library: encoding/json, time, context, log/slog, mime, etc.
 
 ### External Tools
@@ -297,6 +346,7 @@ make clean      # Removes artifacts
 - Terraform 1.5+
 - AWS CLI
 - Make (optional)
+- Android Studio, for its JDK and the Android SDK (the Android app only)
 
 ## Security Considerations
 

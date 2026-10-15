@@ -149,6 +149,12 @@ upload is recorded silently; after that, you are emailed whenever the content
 changes, in case someone else changed it. If the handle triggers within 24
 hours of a change, delivery waits until the 24 hours are up.
 
+### Set Up the Android App
+
+To check in from your phone with a fingerprint or the screen lock, install the
+APK from a release and scan the QR code from `make qrcode`; see
+[Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app).
+
 ### Test Scheduled Event (Optional)
 
 This is a real run: it sends the document if the timeout has passed, or a
