@@ -6,11 +6,7 @@ resource "aws_apigatewayv2_api" "http_api" {
   name          = "${var.application_name}-api"
   protocol_type = "HTTP"
 
-  cors_configuration {
-    allow_origins = ["*"]
-    allow_methods = ["POST", "GET", "OPTIONS"]
-    allow_headers = ["*"]
-  }
+  # No CORS: the check-in client is the Android app, not a browser
 
   tags = merge(var.tags, {
     Name = "HTTP API Gateway"
