@@ -3,7 +3,13 @@
     <string name="app_name">Deadman\'s Handle</string>
 
     <string name="config_title">Set up check-in</string>
-    <string name="config_explanation">Enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
+    <string name="config_explanation">Scan the setup QR code from qrconfig, or enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
+    <string name="scan_qr">Scan QR code</string>
+    <string name="qr_not_config">That QR code is not a Deadman\'s Handle setup code.</string>
+    <string name="qr_unknown_version">That setup code is version %1$d, which this app doesn\'t know. Update the app.</string>
+    <string name="qr_invalid">That setup code has a missing or invalid endpoint or API key.</string>
+    <string name="scanner_downloading">Google Play services is downloading the QR scanner. Try again in a minute, or enter the config by hand.</string>
+    <string name="scan_failed">The QR code could not be scanned: %1$s</string>
     <string name="endpoint_label">API endpoint</string>
     <string name="endpoint_invalid">Enter an https URL, such as https://abc123.execute-api.eu-west-1.amazonaws.com</string>
     <string name="api_key_label">API key</string>

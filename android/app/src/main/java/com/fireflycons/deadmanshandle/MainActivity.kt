@@ -17,10 +17,15 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
+import com.google.mlkit.common.MlKitException
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.fireflycons.deadmanshandle.auth.Authoriser
 import com.fireflycons.deadmanshandle.config.ApiKeyKeystore
 import com.fireflycons.deadmanshandle.config.CheckInConfig
 import com.fireflycons.deadmanshandle.config.ConfigStore
+import com.fireflycons.deadmanshandle.config.QrPayload
 import com.fireflycons.deadmanshandle.ui.ConfigEntryScreen
 import com.fireflycons.deadmanshandle.ui.ConfiguredScreen
 import java.security.GeneralSecurityException
@@ -54,6 +59,10 @@ class MainActivity : FragmentActivity() {
                         ConfigEntryScreen(
                             initialEndpoint = saved.orEmpty(),
                             message = message,
+                            onScan = { onScanned ->
+                                message = null
+                                scan(onScanned, onError = { message = it })
+                            },
                             onSave = { config ->
                                 message = null
                                 save(
@@ -91,6 +100,36 @@ class MainActivity : FragmentActivity() {
         if (keystore.decryptCipher(sealed) != null) return false
         store.clear()
         return true
+    }
+
+    /**
+     * Scans a setup QR code with Google's code scanner, which runs in Play
+     * services and needs no camera permission. Cancelling calls neither
+     * callback.
+     */
+    private fun scan(onScanned: (CheckInConfig) -> Unit, onError: (String) -> Unit) {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .build()
+        // Not activity-scoped listeners: those are removed when the scanner's
+        // own activity stops this one
+        GmsBarcodeScanning.getClient(this, options).startScan()
+            .addOnSuccessListener { barcode ->
+                when (val payload = QrPayload.parse(barcode.rawValue.orEmpty())) {
+                    is QrPayload.Valid -> onScanned(payload.config)
+                    QrPayload.NotAConfig -> onError(getString(R.string.qr_not_config))
+                    is QrPayload.UnknownVersion -> onError(getString(R.string.qr_unknown_version, payload.version))
+                    QrPayload.Invalid -> onError(getString(R.string.qr_invalid))
+                }
+            }
+            .addOnFailureListener {
+                when ((it as? MlKitException)?.errorCode) {
+                    MlKitException.CODE_SCANNER_CANCELLED -> {}
+                    // The scanner is a Play services module, downloaded on first use
+                    MlKitException.CODE_SCANNER_UNAVAILABLE -> onError(getString(R.string.scanner_downloading))
+                    else -> onError(getString(R.string.scan_failed, it.toString()))
+                }
+            }
     }
 
     /** Seals the API key, once the user authorises it, and saves [config] */

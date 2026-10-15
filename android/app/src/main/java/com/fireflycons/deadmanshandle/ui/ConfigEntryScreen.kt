@@ -31,13 +31,16 @@ import com.fireflycons.deadmanshandle.R
 import com.fireflycons.deadmanshandle.config.CheckInConfig
 
 /**
- * Entering the endpoint and API key by hand. [onSave] gets a valid config;
- * [onCancel] is null when there is no saved config to go back to.
+ * Entering the endpoint and API key, by hand or from a setup QR code.
+ * [onScan] scans one and passes its config to the callback it is given, which
+ * fills the fields. [onSave] gets a valid config; [onCancel] is null when
+ * there is no saved config to go back to.
  */
 @Composable
 fun ConfigEntryScreen(
     initialEndpoint: String,
     message: String?,
+    onScan: (onScanned: (CheckInConfig) -> Unit) -> Unit,
     onSave: (CheckInConfig) -> Unit,
     onCancel: (() -> Unit)?,
     modifier: Modifier = Modifier,
@@ -60,6 +63,15 @@ fun ConfigEntryScreen(
         Text(stringResource(R.string.config_explanation))
         if (message != null) {
             Text(message, color = MaterialTheme.colorScheme.error)
+        }
+        OutlinedButton(onClick = {
+            onScan { config ->
+                endpoint = config.endpoint
+                apiKey = config.apiKey
+                checked = false
+            }
+        }) {
+            Text(stringResource(R.string.scan_qr))
         }
         OutlinedTextField(
             value = endpoint,
