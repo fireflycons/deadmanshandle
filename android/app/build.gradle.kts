@@ -19,13 +19,28 @@ android {
         versionName = appVersion
     }
 
+    // The release key, from the environment (the release workflow sets it from
+    // repository secrets). The keystore is PKCS12, so the key's password is
+    // the store's.
+    val releaseKeystore = System.getenv("ANDROID_KEYSTORE_FILE")
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Debug-signed until release signing is set up
-            signingConfig = signingConfigs.getByName("debug")
+            // Debug-signed without the release key, as in local builds and CI
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 

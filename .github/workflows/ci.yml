@@ -61,6 +61,28 @@ jobs:
           tflint --init
           tflint --format compact --var=config_file_path=../config.example.json
 
+  android:
+    name: Android test and build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Gradle daemon is pinned to JDK 25 (android/gradle/gradle-daemon-jvm.properties)
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # The runner has the Android SDK; Gradle installs the platform it needs
+      - name: Unit tests and lint
+        run: make android-test
+
+      # Debug-signed, to check the minified release build
+      - name: Build release APK
+        run: make android
+
   version:
     name: Next version is unused
     if: github.event_name == 'pull_request'
@@ -77,7 +99,7 @@ jobs:
   gate:
     name: CI gate
     if: always()
-    needs: [go, terraform, version]
+    needs: [go, terraform, android, version]
     runs-on: ubuntu-latest
     steps:
       - name: Require every check to pass
