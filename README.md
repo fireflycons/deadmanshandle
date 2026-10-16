@@ -26,6 +26,9 @@ The application uses hexagonal architecture with clear separation between:
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
 - **Alarms**: The owner is emailed if the daily run fails or does not run, or if
   the check-in API is flooded
+- **Push Notifications** (optional): The owner's notices and the alarms are
+  also pushed to the Android app, through SNS and Firebase Cloud Messaging; see
+  [Push Notifications](DEPLOYMENT.md#5-push-notifications-optional)
 
 ## Project Structure
 
@@ -35,6 +38,7 @@ The application uses hexagonal architecture with clear separation between:
 │   ├── http/          # HTTP Lambda handler
 │   ├── scheduled/     # Scheduled event Lambda handler
 │   ├── docwatch/      # Document change (S3 upload) Lambda handler
+│   ├── alarmpush/     # Pushes alarms to the app (only with push)
 │   └── qrconfig/      # CLI: QR code that sets up the Android app
 ├── internal/
 │   ├── adapters/      # AWS service implementations
@@ -177,6 +181,9 @@ receive alarms. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 Headers:
 - `x-api-key`: Your API key from configuration
 
+Body (optional): `{"pushToken": "…"}`, the app's push token, which the owner's
+notices are then pushed to. Without one, the recorded token is kept.
+
 The Android app makes this request for you.
 
 Response:
@@ -210,10 +217,12 @@ go test -cover ./...
 - `SENDER_EMAIL`: Email address for notifications
 - `DOCUMENT_BUCKET`: S3 bucket containing the document (scheduled and docwatch)
 - `DOCUMENT_KEY`: S3 object key for the document (scheduled and docwatch)
+- `PUSH_PLATFORM_APPLICATION_ARN`: SNS platform application for push; empty
+  when push is off (scheduled, docwatch and alarmpush)
 
 ## AWS Services Used
 
-- **AWS Lambda**: Compute (3 functions)
+- **AWS Lambda**: Compute (3 functions, 4 with push)
 - **API Gateway**: HTTP endpoint for check-ins
 - **EventBridge**: Scheduled daily checks
 - **Parameter Store**: Configuration storage
@@ -221,7 +230,8 @@ go test -cover ./...
 - **S3**: Document storage
 - **SES**: Email delivery
 - **CloudWatch**: Logs (14-day retention) and alarms
-- **SNS**: Alarm emails to the owner
+- **SNS**: Alarm emails to the owner, and push notifications to the app
+  through Firebase Cloud Messaging
 
 ## Design Patterns
 

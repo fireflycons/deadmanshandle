@@ -266,6 +266,7 @@ make build
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
 ```
 
 ### Debugging
@@ -457,8 +458,14 @@ it can be shown without a prompt. Backups and device transfers are off.
 
 Things to know:
 
-- The JVM tests cover the config, the QR payload and the check-in result; the
-  Keystore, the prompt and the scanner need a device or an emulator.
+- The JVM tests cover the config, the QR payload, the check-in result and
+  body, and the push message; the Keystore, the prompt, the scanner and
+  push need a device or an emulator. Push also needs a Google Play image and
+  a deployment with a Firebase project.
+- Firebase is started at run time from the setup QR code's push settings
+  (`DeadmansHandleApp`), so each deployment can use its own Firebase project
+  with the same APK. Don't add the Google services Gradle plugin or a
+  `google-services.json`.
 - The release build is minified with R8. `android/app/proguard-rules.pro`
   keeps ML Kit, whose internals break when R8 processes them.
 - Escape apostrophes in `strings.xml` as `\'`; an unescaped one fails the build.
@@ -507,8 +514,9 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   latest `master`.
 - **Release** (`release.yml`), on a push to `master` (a merged pull request):
   runs the CI checks, builds the Lambdas and the Android app, and creates the
-  GitHub release `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and
-  `docwatch.zip`, each with an executable `bootstrap` (linux/arm64);
+  GitHub release `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip`,
+  `docwatch.zip` and `alarmpush.zip`, each with an executable `bootstrap`
+  (linux/arm64);
   `deadmanshandle-terraform-v<VERSION>.tar.gz`, with `terraform/`,
   `config.example.json` and `LICENSE` (from `git archive`, so tracked files
   only, without `.tflint.hcl`); `deadmanshandle-v<VERSION>.apk`, signed with

@@ -21,6 +21,8 @@ local.properties
 # Terraform
 *.tfstate
 *.tfstate.*
+# Saved plans can hold secrets, such as the Firebase key
+*.tfplan
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars

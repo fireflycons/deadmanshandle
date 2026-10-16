@@ -153,7 +153,10 @@ hours of a change, delivery waits until the 24 hours are up.
 
 To check in from your phone with a fingerprint or the screen lock, install the
 APK from a release and scan the QR code from `make qrcode`; see
-[Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app).
+[Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app). With a
+free Firebase project, the app can also get your notices and alarms as push
+notifications; see
+[Push Notifications](DEPLOYMENT.md#5-push-notifications-optional).
 
 ### Test Scheduled Event (Optional)
 
@@ -255,6 +258,9 @@ versioned) first, or `terraform destroy` fails.
                                      S3 (document)     SES ──► owner / recipients
 
   CloudWatch alarms ──► SNS ──► owner
+
+  Optional push: owner notices, and alarms (via the alarmpush Lambda)
+                 ──► SNS mobile push ──► Firebase Cloud Messaging ──► app
 ```
 
 ## Next Steps
@@ -274,7 +280,7 @@ For issues:
 
 ## Cost Estimation
 
-Well under $1 a month, mostly the three CloudWatch alarms (about $0.10 each).
+Well under $1 a month, mostly the CloudWatch alarms (about $0.10 each).
 See DEPLOYMENT.md for the breakdown; costs vary by region.
 
 ---
