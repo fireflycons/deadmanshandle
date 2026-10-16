@@ -18,6 +18,9 @@ brew install make
 
 # For infrastructure changes: Terraform 1.5+
 brew install terraform
+
+# For the Android app: Android Studio, for its JDK and the Android SDK
+brew install --cask android-studio
 ```
 
 The Makefile needs GNU make 4.x and works from any shell, including
@@ -49,7 +52,9 @@ internal/
   └── mocks/        # Test doubles for the ports
 cmd/
   ├── http/         # HTTP Lambda main (check-in)
-  └── scheduled/    # Scheduled Lambda main (daily run)
+  ├── scheduled/    # Scheduled Lambda main (daily run)
+  └── qrconfig/     # CLI: QR code that sets up the Android app
+android/            # Android check-in app (see Android App below)
 terraform/          # Infrastructure
 ```
 
@@ -57,7 +62,8 @@ terraform/          # Infrastructure
 
 - Text files use LF line endings (enforced by `.gitattributes`).
 - Times are UTC. Emails show deadlines as `Monday 2 January 2006 at 15:04 MST`.
-- Use the standard library plus the AWS SDK only.
+- Use the standard library plus the AWS SDK only. The one exception is
+  `github.com/skip2/go-qrcode`, used only by `cmd/qrconfig`.
 
 ## Development Workflow
 
@@ -420,6 +426,58 @@ return fmt.Errorf("invalid key: expected %s, got %s", expected, provided)  // �
 
 The check-in API returns short, generic messages; the details go to the logs.
 
+## Android App
+
+The check-in app is in `android/`: Kotlin and Jetpack Compose, `minSdk` 30
+(Android 11). It opens in Android Studio, and builds with the Gradle wrapper:
+
+```bash
+make android-test   # JVM unit tests and lint
+make android        # Release APK: android/app/build/outputs/apk/release/app-release.apk
+```
+
+The Gradle daemon runs on JDK 25 (`android/gradle/gradle-daemon-jvm.properties`).
+On Windows the Makefile points `JAVA_HOME` at Android Studio's JDK and
+`ANDROID_HOME` at `%LOCALAPPDATA%\Android\Sdk`; override them with
+`ANDROID_JAVA_HOME=...` and `ANDROID_HOME=...`. Elsewhere, set `JAVA_HOME`
+and `ANDROID_HOME` yourself.
+
+The source, in `android/app/src/main/java/com/fireflycons/deadmanshandle/`:
+
+```
+config/     # The config, its secure storage, and the QR code's payload
+auth/       # BiometricPrompt: fingerprint or screen lock
+checkin/    # The check-in request and its result
+ui/         # Compose screens
+```
+
+The API key is encrypted with an AES-GCM Android Keystore key that needs the
+fingerprint or screen lock for every use. The endpoint is stored in clear, so
+it can be shown without a prompt. Backups and device transfers are off.
+
+Things to know:
+
+- The JVM tests cover the config, the QR payload and the check-in result; the
+  Keystore, the prompt and the scanner need a device or an emulator.
+- The release build is minified with R8. `android/app/proguard-rules.pro`
+  keeps ML Kit, whose internals break when R8 processes them.
+- Escape apostrophes in `strings.xml` as `\'`; an unescaped one fails the build.
+- Don't pipe `make android` or `make android-test` into another command: the
+  Gradle daemon keeps the pipe open and the command never ends. Redirect to a
+  file instead.
+- To test QR scanning on an emulator, use a Google Play system image, signed
+  in to a Google account: the scanner is a Play services module, and a Google
+  APIs image can't download it. Load the code with Extended controls >
+  Camera > Virtual scene images, as the Table image, and look down at the
+  table.
+- Enrol a fingerprint on an emulator in its settings, touching the sensor with
+  `adb emu finger touch 1`.
+
+The release build is signed with the release key when `ANDROID_KEYSTORE_FILE`
+(a PKCS12 keystore), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` are
+set. The key's password is the keystore's. Without them it is debug-signed,
+which is fine for testing but can't update an installed release.
+
 ## Deploying Changes
 
 Deploy with Terraform, which zips the binaries from `bin/` during `plan` and
@@ -441,19 +499,30 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
 - **CI** (`ci.yml`), on a push to any branch except `master` and on a pull
   request to `master`: golangci-lint and `go test ./...`; `terraform fmt
   -check`, `terraform validate` and TFLint (with the AWS ruleset, configured in
-  `terraform/.tflint.hcl`). On a pull request it also checks the version (below).
+  `terraform/.tflint.hcl`); the Android unit tests and lint, and a
+  (debug-signed) release build. On a pull request it also checks the version
+  (below).
   The `CI gate` job passes only if all of these do; a ruleset on `master`
   requires it, so a pull request can't be merged until it passes against the
   latest `master`.
 - **Release** (`release.yml`), on a push to `master` (a merged pull request):
-  runs the CI checks, builds the Lambdas, and creates the GitHub release
-  `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and `docwatch.zip`,
-  each with an executable `bootstrap` (linux/arm64);
+  runs the CI checks, builds the Lambdas and the Android app, and creates the
+  GitHub release `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and
+  `docwatch.zip`, each with an executable `bootstrap` (linux/arm64);
   `deadmanshandle-terraform-v<VERSION>.tar.gz`, with `terraform/`,
   `config.example.json` and `LICENSE` (from `git archive`, so tracked files
-  only, without `.tflint.hcl`); and `SHA256SUMS`. The notes link to
+  only, without `.tflint.hcl`); `deadmanshandle-v<VERSION>.apk`, signed with
+  the release key; and `SHA256SUMS`. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
+
+The release key comes from three repository secrets: `ANDROID_KEYSTORE_BASE64`
+(the PKCS12 keystore, base64-encoded), `ANDROID_KEYSTORE_PASSWORD` and
+`ANDROID_KEY_ALIAS`. Without them the release fails, rather than publish an
+APK that can't update the installed one. Every release must be signed with the
+same key, so keep a copy of the keystore and its password outside GitHub: if
+the key is lost, users must uninstall the app, which erases its config, to
+install a new one.
 
 The version is in `VERSION` at the root, as `MAJOR.MINOR.PATCH`. **Bump it in
 every pull request to `master`**: the pull request fails if `v<VERSION>` is
@@ -463,6 +532,9 @@ already a tag, or isn't greater than the latest release and than `VERSION` on
 ```bash
 bash .github/scripts/check-version.sh
 ```
+
+The Android app's `versionName` is `VERSION`, and its `versionCode` is
+`MAJOR * 10000 + MINOR * 100 + PATCH`, so each release can update the last.
 
 ## Architecture Diagram
 
@@ -497,6 +569,7 @@ Before submitting a pull request:
 - [ ] Security review: no hardcoded secrets, nothing sensitive logged
 - [ ] Error handling: all errors handled
 - [ ] Terraform changes valid: `terraform fmt -check`, `terraform validate`
+- [ ] Android changes pass `make android-test` and `make android`
 - [ ] `VERSION` bumped
 
 ## Useful Commands

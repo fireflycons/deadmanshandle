@@ -10,12 +10,25 @@ dist/
 build/
 *.zip
 
+# Android
+.gradle/
+.kotlin/
+local.properties
+*.apk
+*.jks
+*.keystore
+
 # Terraform
 *.tfstate
 *.tfstate.*
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
+# A deployment's own settings, such as its state backend
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
 # IDE
 .vscode/
@@ -32,6 +45,9 @@ Thumbs.db
 .env
 .env.local
 config.json
+
+# QR code holding the API key (make qrcode)
+checkin-qr.png
 
 # Logs
 logs/

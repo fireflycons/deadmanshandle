@@ -2,8 +2,9 @@
 
 You don't need to build anything to deploy. Each
 [release](https://github.com/fireflycons/deadmanshandle/releases) has the
-pre-built Lambda binaries, the Terraform configuration and the example
-configs; see [Deploying from a Release](#deploying-from-a-release). To build
+pre-built Lambda binaries, the Terraform configuration, the example configs
+and (from v0.2.0) the Android check-in app; see
+[Deploying from a Release](#deploying-from-a-release). To build
 from source instead, clone the repository and see
 [Build the Application](#build-the-application).
 
@@ -23,15 +24,17 @@ Pick a version from the
 [releases page](https://github.com/fireflycons/deadmanshandle/releases) and
 download its files: `deadmanshandle-terraform-<version>.tar.gz` (the Terraform
 configuration, example configs and licence), `http.zip`, `scheduled.zip` and
-`docwatch.zip` (the Lambdas, built for linux/arm64), and `SHA256SUMS`.
+`docwatch.zip` (the Lambdas, built for linux/arm64),
+`deadmanshandle-<version>.apk` (the Android app; see
+[Setting Up the Android App](#setting-up-the-android-app)) and `SHA256SUMS`.
 
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.1.0   # the release you want
+VERSION=v0.2.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 mkdir deadmanshandle-download && cd deadmanshandle-download
-for f in "deadmanshandle-terraform-$VERSION.tar.gz" http.zip scheduled.zip docwatch.zip SHA256SUMS; do
+for f in "deadmanshandle-terraform-$VERSION.tar.gz" http.zip scheduled.zip docwatch.zip "deadmanshandle-$VERSION.apk" SHA256SUMS; do
   curl -fsSLO "$BASE/$f"
 done
 sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
@@ -40,10 +43,10 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.1.0'   # the release you want
+$Version = 'v0.2.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 New-Item -ItemType Directory deadmanshandle-download | Set-Location
-foreach ($f in "deadmanshandle-terraform-$Version.tar.gz", 'http.zip', 'scheduled.zip', 'docwatch.zip', 'SHA256SUMS') {
+foreach ($f in "deadmanshandle-terraform-$Version.tar.gz", 'http.zip', 'scheduled.zip', 'docwatch.zip', "deadmanshandle-$Version.apk", 'SHA256SUMS') {
     Invoke-WebRequest "$Base/$f" -OutFile $f
 }
 Get-Content SHA256SUMS | ForEach-Object {
@@ -52,7 +55,7 @@ Get-Content SHA256SUMS | ForEach-Object {
 }
 ```
 
-With the GitHub CLI, `gh release download v0.1.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.2.0 -R fireflycons/deadmanshandle`
 downloads them all.
 
 ### 2. Unpack
@@ -373,6 +376,81 @@ terraform import aws_cloudwatch_log_group.http_handler /aws/lambda/deadmanshandl
 terraform import aws_cloudwatch_log_group.scheduled_handler /aws/lambda/deadmanshandle-scheduled
 terraform import aws_cloudwatch_log_group.docwatch_handler /aws/lambda/deadmanshandle-docwatch
 ```
+
+## Setting Up the Android App
+
+The owner checks in with the Android app (source in `android/`). It keeps the
+API endpoint and API key on the phone, with the key encrypted by an Android
+Keystore key, and asks for a fingerprint or the screen lock each time it uses
+the key. `curl`, as above, works too.
+
+### Requirements
+
+- Android 11 or later, with a screen lock (PIN, pattern or password). The app
+  can't store the API key without one.
+- Google Play services, to scan the setup QR code. Without it, enter the
+  config by hand. Play services downloads the scanner when the app is
+  installed, or on the first scan; until it has, the app says so.
+
+### 1. Install the App
+
+Each release from v0.2.0 has the app as `deadmanshandle-<version>.apk`, signed
+with the project's release key. It isn't in Google Play: download it on the
+phone and open it, allowing your browser or file manager to install unknown
+apps when Android asks. To update, install a later release's APK over it; the
+config is kept.
+
+### 2. Make the Setup QR Code
+
+`make qrcode` writes `checkin-qr.png`, a QR code holding the API endpoint and
+the API key. It needs a clone of the repository and Go. By default it reads the
+endpoint from `terraform/terraform.tfstate` and the key from `config.json`:
+
+```bash
+make qrcode
+```
+
+To read the values the Lambdas use from Parameter Store instead, with the AWS
+credentials in the environment (for example after changing the `apiKey`):
+
+```bash
+make qrcode QRFLAGS=-aws
+```
+
+Without a clone, Go can run it straight from the module:
+
+```bash
+go run github.com/fireflycons/deadmanshandle/cmd/qrconfig@latest -aws
+```
+
+`-out` and `-size` set the file and its width in pixels (default 1024), and
+`-app` the Terraform `application_name` if it isn't `deadmanshandle`.
+
+**The PNG holds the API key.** Show it on a screen rather than printing it, and
+delete it once the app has scanned it. Git ignores `checkin-qr.png`.
+
+### 3. Configure the App
+
+Open the app and either tap **Scan QR code** and scan the code, or enter the
+endpoint (`terraform output -raw api_endpoint`) and the API key by hand. Tap
+**Save** and confirm with your fingerprint or screen lock.
+
+### 4. Check In
+
+Tap **Check in** and confirm with your fingerprint or screen lock. The app
+shows the new deadline in the phone's time zone, or why the check-in failed.
+The API allows about one request a minute.
+
+### Good to Know
+
+- **Changing the API key:** after updating `apiKey` in Parameter Store (see
+  below), tap **Change config** and scan a new code or enter the new key. The
+  check-in Lambda may accept the old key for up to 5 minutes.
+- **Removing the screen lock** invalidates the app's Keystore key, so the app
+  clears its config and asks for it again. Enrolling a new fingerprint does
+  not: the key also accepts the screen lock, which enrolling needs anyway.
+- **The config is never backed up** or copied to a new phone, and uninstalling
+  the app erases it. Set the app up again from a QR code.
 
 ## Updating the Configuration
 

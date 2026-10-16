@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Deadman\'s Handle</string>
+
+    <string name="config_title">Set up check-in</string>
+    <string name="config_explanation">Scan the setup QR code from qrconfig, or enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
+    <string name="scan_qr">Scan QR code</string>
+    <string name="qr_not_config">That QR code is not a Deadman\'s Handle setup code.</string>
+    <string name="qr_unknown_version">That setup code is version %1$d, which this app doesn\'t know. Update the app.</string>
+    <string name="qr_invalid">That setup code has a missing or invalid endpoint or API key.</string>
+    <string name="scanner_downloading">Google Play services is downloading the QR scanner. Try again in a minute, or enter the config by hand.</string>
+    <string name="scan_failed">The QR code could not be scanned: %1$s</string>
+    <string name="endpoint_label">API endpoint</string>
+    <string name="endpoint_invalid">Enter an https URL, such as https://abc123.execute-api.eu-west-1.amazonaws.com</string>
+    <string name="api_key_label">API key</string>
+    <string name="api_key_invalid">Enter the API key</string>
+    <string name="show">Show</string>
+    <string name="hide">Hide</string>
+    <string name="save">Save</string>
+    <string name="cancel">Cancel</string>
+    <string name="save_prompt_title">Save the check-in config</string>
+    <string name="no_screen_lock">Set a screen lock (PIN, pattern or password) in Settings first. The API key can only be stored on a device that has one.</string>
+    <string name="save_failed">The config could not be saved: %1$s</string>
+    <string name="config_invalidated">The screen lock on this device was removed, so the saved config can no longer be used. Enter it again.</string>
+
+    <string name="configured_title">Ready to check in</string>
+    <string name="configured_endpoint">Endpoint: %1$s</string>
+    <string name="change_config">Change config</string>
+    <string name="check_in">Check in</string>
+    <string name="checking_in">Checking in…</string>
+    <string name="checkin_prompt_title">Check in</string>
+    <string name="checked_in">Checked in. The new deadline is %1$s.</string>
+    <string name="checkin_unauthorised">The API rejected the API key. Change the config, or scan the setup code again.</string>
+    <string name="checkin_throttled">The API allows about one request a minute. Try again shortly.</string>
+    <string name="checkin_http_failed">Check-in failed: the API returned HTTP %1$d.</string>
+    <string name="checkin_http_failed_message">Check-in failed: the API returned HTTP %1$d (%2$s).</string>
+    <string name="checkin_unreachable">Could not reach the API: %1$s</string>
+    <string name="checkin_failed">Check-in failed: %1$s</string>
+</resources>

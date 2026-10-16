@@ -37,9 +37,35 @@ jobs:
       - name: Build
         run: make build
 
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      # Signed with the release key, so each release can update the last.
+      # Without it the APK would be debug-signed with a key unique to this
+      # runner, so the build fails instead.
+      - name: Build Android app
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [[ -z $ANDROID_KEYSTORE_BASE64 || -z $ANDROID_KEYSTORE_PASSWORD || -z $ANDROID_KEY_ALIAS ]]; then
+            echo "::error::The ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD and ANDROID_KEY_ALIAS secrets are required"
+            exit 1
+          fi
+          export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/release.jks"
+          base64 -d <<< "$ANDROID_KEYSTORE_BASE64" > "$ANDROID_KEYSTORE_FILE"
+          make android
+          rm "$ANDROID_KEYSTORE_FILE"
+
       # Each zip holds an executable bootstrap at its root, ready for Lambda.
       # The tarball has the Terraform configuration and example configs, laid
       # out as in the repository, so the zips unpack into its bin/ directory.
+      # The APK is the Android check-in app.
       - name: Package
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -51,7 +77,8 @@ jobs:
           git archive --format=tar.gz --prefix="deadmanshandle-v$VERSION/" \
             -o "dist/deadmanshandle-terraform-v$VERSION.tar.gz" \
             HEAD terraform config.example.json LICENSE ':!terraform/.tflint.hcl'
-          (cd dist && sha256sum *.zip *.tar.gz > SHA256SUMS)
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/deadmanshandle-v$VERSION.apk"
+          (cd dist && sha256sum *.zip *.tar.gz *.apk > SHA256SUMS)
 
       - name: Release notes
         env:

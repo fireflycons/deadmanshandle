@@ -8,6 +8,7 @@
 
 # Binary files: never convert or diff as text
 *.zip  binary
+*.jar  binary
 *.pdf  binary
 *.png  binary
 *.jpg  binary

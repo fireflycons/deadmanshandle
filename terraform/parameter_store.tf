@@ -60,6 +60,18 @@ resource "aws_ssm_parameter" "config" {
   })
 }
 
+# The endpoint, kept up to date by Terraform, so that `qrconfig -aws` can set up
+# the Android app from AWS alone. Not secret, and not read by the Lambdas.
+resource "aws_ssm_parameter" "api_endpoint" {
+  name  = "/${var.application_name}/api-endpoint"
+  type  = "String"
+  value = local.api_endpoint
+
+  tags = merge(var.tags, {
+    Name = "API Endpoint"
+  })
+}
+
 # A warning, not an error: the file's timeout only matters when the state
 # item is created (or re-seeded), and is expected to be past on later applies.
 check "seed_timeout_in_future" {
