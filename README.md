@@ -4,7 +4,7 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
 
 ## Architecture
 
-![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, and alarms to the owner](docs/architecture.png)
+![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, alarms to the owner, and optional push notifications to the app through SNS and Firebase Cloud Messaging](docs/architecture.png)
 
 The diagram is drawn by `tools/architecture_diagram.py`; see
 [DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
