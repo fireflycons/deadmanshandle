@@ -1,7 +1,12 @@
 package com.fireflycons.deadmanshandle
 
+import android.Manifest
 import android.app.KeyguardManager
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -29,9 +34,12 @@ import com.fireflycons.deadmanshandle.config.ApiKeyKeystore
 import com.fireflycons.deadmanshandle.config.CheckInConfig
 import com.fireflycons.deadmanshandle.config.ConfigStore
 import com.fireflycons.deadmanshandle.config.QrPayload
+import com.fireflycons.deadmanshandle.push.Firebase
+import com.fireflycons.deadmanshandle.push.Notifications
 import com.fireflycons.deadmanshandle.ui.CheckInStatus
 import com.fireflycons.deadmanshandle.ui.ConfigEntryScreen
 import com.fireflycons.deadmanshandle.ui.ConfiguredScreen
+import com.fireflycons.deadmanshandle.ui.NotificationStatus
 import java.security.GeneralSecurityException
 import java.time.ZoneId
 import java.util.Locale
@@ -45,10 +53,17 @@ class MainActivity : FragmentActivity() {
     private val client = CheckInClient()
     private val executor = Executors.newSingleThreadExecutor()
 
+    // Read again on resume, since they can be changed in Settings
+    private var notificationsAllowed by mutableStateOf(false)
+    private val requestNotifications =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            notificationsAllowed = Notifications.allowed(this)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        store = ConfigStore(getSharedPreferences(PREFS, MODE_PRIVATE))
+        store = ConfigStore(getSharedPreferences(ConfigStore.PREFS, MODE_PRIVATE))
         keystore = ApiKeyKeystore()
         authoriser = Authoriser(this)
         val invalidated = clearIfKeyInvalidated()
@@ -62,6 +77,8 @@ class MainActivity : FragmentActivity() {
                 }
                 var status by remember { mutableStateOf<CheckInStatus?>(null) }
                 var checkingIn by remember { mutableStateOf(false) }
+                var hasPush by remember { mutableStateOf(store.pushOptions != null) }
+                var pushRegistered by remember { mutableStateOf(store.isPushRegistered) }
 
                 Scaffold { padding ->
                     val modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).imePadding()
@@ -69,6 +86,7 @@ class MainActivity : FragmentActivity() {
                     if (saved == null || editing) {
                         ConfigEntryScreen(
                             initialEndpoint = saved.orEmpty(),
+                            initialPush = if (saved != null) store.pushOptions else null,
                             message = message,
                             onScan = { onScanned ->
                                 message = null
@@ -80,6 +98,8 @@ class MainActivity : FragmentActivity() {
                                     config,
                                     onSaved = {
                                         endpoint = config.endpoint
+                                        hasPush = config.push != null
+                                        pushRegistered = false
                                         editing = false
                                     },
                                     onError = { message = it },
@@ -98,6 +118,12 @@ class MainActivity : FragmentActivity() {
                             endpoint = saved,
                             status = status,
                             checkingIn = checkingIn,
+                            notifications = when {
+                                !hasPush -> NotificationStatus.OFF
+                                !notificationsAllowed -> NotificationStatus.BLOCKED
+                                !pushRegistered -> NotificationStatus.PENDING
+                                else -> NotificationStatus.ON
+                            },
                             onCheckIn = {
                                 status = null
                                 checkIn(
@@ -105,6 +131,7 @@ class MainActivity : FragmentActivity() {
                                     onResult = {
                                         checkingIn = false
                                         status = it
+                                        pushRegistered = store.isPushRegistered
                                     },
                                     onInvalidated = {
                                         endpoint = null
@@ -112,6 +139,7 @@ class MainActivity : FragmentActivity() {
                                     },
                                 )
                             },
+                            onNotificationSettings = ::openNotificationSettings,
                             onChange = {
                                 status = null
                                 editing = true
@@ -124,6 +152,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        notificationsAllowed = Notifications.allowed(this)
+    }
+
     /**
      * Removing the screen lock invalidates the Keystore key, so the saved
      * API key can't be opened. The config is then
@@ -132,8 +165,21 @@ class MainActivity : FragmentActivity() {
     private fun clearIfKeyInvalidated(): Boolean {
         val sealed = store.sealedApiKey ?: return false
         if (keystore.decryptCipher(sealed) != null) return false
-        store.clear()
+        clearConfig()
         return true
+    }
+
+    /** Clears the config, and stops pushes to this install */
+    private fun clearConfig() {
+        store.clear()
+        Firebase.configure(this, null)
+    }
+
+    /** Opens the app's notification settings, where they can be allowed */
+    private fun openNotificationSettings() {
+        startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName),
+        )
     }
 
     /**
@@ -185,6 +231,8 @@ class MainActivity : FragmentActivity() {
             onAuthorised = { authorised ->
                 try {
                     store.save(config, authorised)
+                    Firebase.configure(this, config.push)
+                    if (config.push != null) askForNotifications()
                     onSaved()
                 } catch (e: GeneralSecurityException) {
                     onError(getString(R.string.save_failed, e.toString()))
@@ -194,10 +242,18 @@ class MainActivity : FragmentActivity() {
         )
     }
 
+    /** Asks to post notifications, which Android 13 and later need permission for */
+    private fun askForNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !Notifications.allowed(this)) {
+            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     /**
      * Opens the API key, once the user authorises it, and checks in on a
-     * background thread. A key invalidated since startup clears the config
-     * and calls [onInvalidated] instead.
+     * background thread, sending the push token if push is set up. A key
+     * invalidated since startup clears the config and calls [onInvalidated]
+     * instead.
      */
     private fun checkIn(
         onStarted: () -> Unit,
@@ -207,7 +263,7 @@ class MainActivity : FragmentActivity() {
         val sealed = store.sealedApiKey ?: return
         val cipher = keystore.decryptCipher(sealed)
         if (cipher == null) {
-            store.clear()
+            clearConfig()
             onInvalidated()
             return
         }
@@ -223,7 +279,9 @@ class MainActivity : FragmentActivity() {
                 } ?: return@authorise
                 onStarted()
                 executor.execute {
-                    val result = client.checkIn(config)
+                    val token = if (config.push != null) Firebase.token(this) else null
+                    val result = client.checkIn(config, token)
+                    if (result is CheckInResult.Success && token != null) store.markPushRegistered(token)
                     runOnUiThread { onResult(describe(result)) }
                 }
             },
@@ -250,9 +308,5 @@ class MainActivity : FragmentActivity() {
             isError = true,
         )
         is CheckInResult.Unreachable -> CheckInStatus(getString(R.string.checkin_unreachable, result.reason), isError = true)
-    }
-
-    private companion object {
-        const val PREFS = "config"
     }
 }

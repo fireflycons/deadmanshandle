@@ -9,6 +9,7 @@ biometric = "1.1.0"
 fragment = "1.9.1"
 codeScanner = "16.1.0"
 orgJson = "20260814"
+firebaseBom = "35.0.2"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -23,6 +24,10 @@ androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "b
 # biometric depends on an old fragment; BiometricPrompt needs a FragmentActivity
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "fragment" }
 play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "codeScanner" }
+# Firebase is started at run time from the setup QR code's settings, so
+# without the google-services plugin
+firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 # Android's org.json is a stub in JVM unit tests
 org-json = { module = "org.json:json", version.ref = "orgJson" }
 
