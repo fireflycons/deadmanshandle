@@ -70,7 +70,7 @@ func TestAPIKeyFromConfig(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	data, err := Encode("https://abc.example.com", `k"ey`)
+	data, err := Encode("https://abc.example.com", `k"ey`, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -83,5 +83,64 @@ func TestEncode(t *testing.T) {
 	}
 	if p != (Payload{Version: 1, Endpoint: "https://abc.example.com", APIKey: `k"ey`}) {
 		t.Errorf("round trip = %+v", p)
+	}
+}
+
+func TestEncodeWithPush(t *testing.T) {
+	push := &Push{ProjectID: "proj", AppID: "1:42:android:ab", APIKey: "AIza", SenderID: "42"}
+	data, err := Encode("https://abc.example.com", "key", push)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := `{"v":1,"endpoint":"https://abc.example.com","apiKey":"key",` +
+		`"push":{"projectId":"proj","appId":"1:42:android:ab","apiKey":"AIza","senderId":"42"}}`
+	if string(data) != want {
+		t.Errorf("payload = %s, want %s", data, want)
+	}
+}
+
+// googleServices is a google-services.json with another app before this one
+const googleServices = `{
+  "project_info": {"project_number": "123456789012", "project_id": "dmh-test", "storage_bucket": "dmh-test.appspot.com"},
+  "client": [
+    {
+      "client_info": {"mobilesdk_app_id": "1:123456789012:android:other", "android_client_info": {"package_name": "com.example.other"}},
+      "api_key": [{"current_key": "AIzaOther"}]
+    },
+    {
+      "client_info": {"mobilesdk_app_id": "1:123456789012:android:abc123", "android_client_info": {"package_name": "com.fireflycons.deadmanshandle"}},
+      "oauth_client": [],
+      "api_key": [{"current_key": "AIzaThisApp"}],
+      "services": {"appinvite_service": {"other_platform_oauth_client": []}}
+    }
+  ],
+  "configuration_version": "1"
+}`
+
+func TestPushFromGoogleServices(t *testing.T) {
+	push, err := PushFromGoogleServices([]byte(googleServices))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	want := Push{ProjectID: "dmh-test", AppID: "1:123456789012:android:abc123", APIKey: "AIzaThisApp", SenderID: "123456789012"}
+	if *push != want {
+		t.Errorf("push = %+v, want %+v", *push, want)
+	}
+
+	tests := []struct {
+		name    string
+		data    string
+		wantErr string
+	}{
+		{"bad JSON", `{`, "parsing google-services.json"},
+		{"no such app", strings.Replace(googleServices, "com.fireflycons.deadmanshandle", "com.example.x", 1), "has no Android app"},
+		{"no API key", strings.Replace(googleServices, `"AIzaThisApp"`, `""`, 1), "missing"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := PushFromGoogleServices([]byte(tt.data)); err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %v, want one containing %q", err, tt.wantErr)
+			}
+		})
 	}
 }

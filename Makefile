@@ -30,7 +30,7 @@ help:
 	@$(info $(indent)local       - Run local tests)
 	@$(info $(indent)android     - Build the Android app: android/app/build/outputs/apk/release)
 	@$(info $(indent)android-test - Run the Android unit tests and lint)
-	@$(info $(indent)qrcode      - Write checkin-qr.png to set up the Android app (QRFLAGS=-aws reads AWS))
+	@$(info $(indent)qrcode      - Write checkin-qr.png to set up the Android app (QRFLAGS=-aws reads AWS; -firebase adds push))
 	@exit 0
 
 # Exported so that go build sees them in either shell
