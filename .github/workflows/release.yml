@@ -71,7 +71,7 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           mkdir dist
-          for fn in http scheduled docwatch; do
+          for fn in http scheduled docwatch alarmpush; do
             (cd "bin/$fn" && zip -X -q "../../dist/$fn.zip" bootstrap)
           done
           git archive --format=tar.gz --prefix="deadmanshandle-v$VERSION/" \
