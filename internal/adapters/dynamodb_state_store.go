@@ -29,6 +29,7 @@ var stateAttributeNames = map[string]string{
 	"#e": "documentETag",
 	"#d": "documentChangedAt",
 	"#p": "documentChangePending",
+	"#k": "pushToken",
 }
 
 // DynamoDBStateStore implements the StateStore interface with one DynamoDB item
@@ -90,15 +91,31 @@ func (s *DynamoDBStateStore) GetState(ctx context.Context) (*config.State, error
 	if pending, ok := output.Item["documentChangePending"].(*types.AttributeValueMemberBOOL); ok {
 		state.DocumentChangePending = pending.Value
 	}
+	if token, ok := output.Item["pushToken"].(*types.AttributeValueMemberS); ok {
+		state.PushToken = token.Value
+	}
 	return &state, nil
 }
 
-// CheckIn sets the timeout and clears the delivery state in one update
-func (s *DynamoDBStateStore) CheckIn(ctx context.Context, timeout time.Time) error {
-	return s.update(ctx, "SET #t = :t REMOVE #s, #o ADD #c :one", "", map[string]types.AttributeValue{
+// CheckIn sets the timeout, clears the delivery state and records the push
+// token, if any, in one update
+func (s *DynamoDBStateStore) CheckIn(ctx context.Context, timeout time.Time, pushToken string) error {
+	expression, values := checkInUpdate(timeout, pushToken)
+	return s.update(ctx, expression, "", values)
+}
+
+// checkInUpdate builds CheckIn's update expression and values
+func checkInUpdate(timeout time.Time, pushToken string) (string, map[string]types.AttributeValue) {
+	values := map[string]types.AttributeValue{
 		":t":   &types.AttributeValueMemberS{Value: timeout.UTC().Format(time.RFC3339)},
 		":one": &types.AttributeValueMemberN{Value: "1"},
-	})
+	}
+	set := "SET #t = :t"
+	if pushToken != "" {
+		set += ", #k = :k"
+		values[":k"] = &types.AttributeValueMemberS{Value: pushToken}
+	}
+	return set + " REMOVE #s, #o ADD #c :one", values
 }
 
 // RecordSent adds recipient to the sentTo set, unless there was a check-in

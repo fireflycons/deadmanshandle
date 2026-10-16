@@ -26,7 +26,7 @@ func newDocumentWatchTest(t *testing.T) (*DocumentWatchHandler, *mocks.MockState
 	documentStore := mocks.NewMockDocumentStore()
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
-	watcher := NewDocumentWatcher(stateStore, emailSender, service)
+	watcher := NewDocumentWatcher(stateStore, emailSender, nil, service)
 	handler := NewDocumentWatchHandler(configStore, documentStore, watcher, testParam, testBucket, testKey)
 
 	return handler, stateStore, documentStore, emailSender
@@ -209,7 +209,7 @@ func TestDocumentWatcherConcurrentChecks(t *testing.T) {
 				}
 			}
 			emailSender := mocks.NewMockEmailSender()
-			watcher := NewDocumentWatcher(stateStore, emailSender, domain.NewDeadmansHandleServiceWithTime(testNow))
+			watcher := NewDocumentWatcher(stateStore, emailSender, nil, domain.NewDeadmansHandleServiceWithTime(testNow))
 			doc := domain.Document{Location: "s3://" + testBucket + "/" + testKey, Available: true, ETag: tt.ours}
 
 			if err := watcher.Check(context.Background(), testConfig(), doc, testOrigin); err != nil {

@@ -4,6 +4,9 @@ import (
 	"maps"
 	"slices"
 	"testing"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 )
 
 // DynamoDB rejects a request whose expression attribute names are not all
@@ -14,6 +17,7 @@ func TestUsedNames(t *testing.T) {
 		want       []string
 	}{
 		{"SET #t = :t REMOVE #s, #o ADD #c :one ", []string{"#c", "#o", "#s", "#t"}},
+		{"SET #t = :t, #k = :k REMOVE #s, #o ADD #c :one ", []string{"#c", "#k", "#o", "#s", "#t"}},
 		{"ADD #s :r #c = :c", []string{"#c", "#s"}},
 		{"SET #o = :true attribute_exists(#t) AND (attribute_not_exists(#c) OR #c = :c)", []string{"#c", "#o", "#t"}},
 		{"SET #e = :n attribute_exists(#t) AND attribute_not_exists(#e)", []string{"#e", "#t"}},
@@ -26,6 +30,33 @@ func TestUsedNames(t *testing.T) {
 			got := slices.Sorted(maps.Keys(usedNames(tt.expression)))
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("Expected names %v, got %v", tt.want, got)
+			}
+		})
+	}
+}
+
+// A check-in without a push token must leave the recorded one alone
+func TestCheckInUpdate(t *testing.T) {
+	timeout := time.Date(2024, 7, 1, 12, 0, 0, 0, time.UTC)
+	tests := []struct {
+		token      string
+		expression string
+		values     []string
+	}{
+		{"", "SET #t = :t REMOVE #s, #o ADD #c :one", []string{":one", ":t"}},
+		{"tok", "SET #t = :t, #k = :k REMOVE #s, #o ADD #c :one", []string{":k", ":one", ":t"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.token, func(t *testing.T) {
+			expression, values := checkInUpdate(timeout, tt.token)
+			if expression != tt.expression {
+				t.Errorf("Expected %q, got %q", tt.expression, expression)
+			}
+			if got := slices.Sorted(maps.Keys(values)); !slices.Equal(got, tt.values) {
+				t.Errorf("Expected values %v, got %v", tt.values, got)
+			}
+			if tt.token != "" && values[":k"].(*types.AttributeValueMemberS).Value != tt.token {
+				t.Errorf("Expected token %q, got %v", tt.token, values[":k"])
 			}
 		})
 	}

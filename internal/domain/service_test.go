@@ -30,6 +30,18 @@ func TestCheckIn(t *testing.T) {
 	}
 }
 
+// Every kind has a name for the app, and only documents are not for the owner
+func TestEmailKindNames(t *testing.T) {
+	for kind := EmailDocument; kind <= EmailDeliveryHeld; kind++ {
+		if kind.String() == "unknown" {
+			t.Errorf("Kind %d has no name", kind)
+		}
+		if got, want := (EmailAction{Kind: kind}).ForOwner(), kind != EmailDocument; got != want {
+			t.Errorf("Kind %v: expected ForOwner %v, got %v", kind, want, got)
+		}
+	}
+}
+
 func TestProcessScheduledEventTimeoutPassed(t *testing.T) {
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 	service := NewDeadmansHandleServiceWithTime(now)

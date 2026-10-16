@@ -34,6 +34,25 @@ const (
 	EmailDeliveryHeld
 )
 
+// emailKindNames are the kinds' names, as pushed to the app
+var emailKindNames = map[EmailKind]string{
+	EmailDocument:        "document",
+	EmailTriggerNotice:   "triggered",
+	EmailWarning:         "warning",
+	EmailDocumentMissing: "document-missing",
+	EmailDeliveryBlocked: "delivery-blocked",
+	EmailDocumentChanged: "document-changed",
+	EmailDeliveryHeld:    "delivery-held",
+}
+
+// String names the kind, as pushed to the app
+func (k EmailKind) String() string {
+	if name, ok := emailKindNames[k]; ok {
+		return name
+	}
+	return "unknown"
+}
+
 // ChangeHoldPeriod is how long after a change of the document its delivery
 // is held, so that the owner can react to an unauthorised change before the
 // recipients receive it. It runs from when the change was found, whether or
@@ -70,6 +89,12 @@ type EmailAction struct {
 // AttachDocument reports whether the document should be attached
 func (e EmailAction) AttachDocument() bool {
 	return e.Kind == EmailDocument
+}
+
+// ForOwner reports whether the email is a notice to the owner, which is also
+// pushed to the owner's phone
+func (e EmailAction) ForOwner() bool {
+	return e.Kind != EmailDocument
 }
 
 // DeadmansHandleService contains the core business logic

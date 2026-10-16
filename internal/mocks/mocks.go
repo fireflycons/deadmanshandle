@@ -17,6 +17,7 @@ var (
 	_ ports.StateStore      = (*MockStateStore)(nil)
 	_ ports.DocumentStore   = (*MockDocumentStore)(nil)
 	_ ports.EmailSender     = (*MockEmailSender)(nil)
+	_ ports.PushSender      = (*MockPushSender)(nil)
 	_ ports.APIKeyValidator = (*MockAPIKeyValidator)(nil)
 )
 
@@ -59,9 +60,12 @@ func (m *MockStateStore) GetState(ctx context.Context) (*config.State, error) {
 	return &state, nil
 }
 
-func (m *MockStateStore) CheckIn(ctx context.Context, timeout time.Time) error {
+func (m *MockStateStore) CheckIn(ctx context.Context, timeout time.Time, pushToken string) error {
 	if m.CheckInErr != nil {
 		return m.CheckInErr
+	}
+	if pushToken != "" {
+		m.State.PushToken = pushToken
 	}
 	m.State.Timeout = timeout
 	m.State.SentTo = nil
@@ -191,6 +195,29 @@ func (m *MockEmailSender) SendEmail(ctx context.Context, to, subject, body strin
 		Attachments: attachments,
 	})
 	return nil
+}
+
+// Push records a push passed to MockPushSender
+type Push struct {
+	Token string
+	Kind  string
+	Title string
+	Body  string
+}
+
+// MockPushSender is a mock implementation of PushSender
+type MockPushSender struct {
+	Pushes []Push
+	Err    error // Returned by Push when set, after recording the push
+}
+
+func NewMockPushSender() *MockPushSender {
+	return &MockPushSender{}
+}
+
+func (m *MockPushSender) Push(ctx context.Context, token, kind, title, body string) error {
+	m.Pushes = append(m.Pushes, Push{Token: token, Kind: kind, Title: title, Body: body})
+	return m.Err
 }
 
 // MockAPIKeyValidator is a mock implementation of APIKeyValidator. It
