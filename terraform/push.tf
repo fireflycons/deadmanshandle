@@ -25,26 +25,22 @@ resource "aws_iam_role_policy" "lambda_push" {
   name = "${var.application_name}-lambda-push"
   role = aws_iam_role.lambda_role.id
 
-  # Endpoints are created on demand, one per token, under the application
+  # Endpoints are created on demand, one per token, under the application.
+  # SNS authorises some endpoint actions against the application's ARN (as
+  # GetEndpointAttributes does) and others against the endpoint's, so both
+  # are granted.
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
         Effect = "Allow"
         Action = [
-          "sns:CreatePlatformEndpoint"
-        ]
-        Resource = [
-          aws_sns_platform_application.fcm[0].arn
-        ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
+          "sns:CreatePlatformEndpoint",
           "sns:GetEndpointAttributes",
           "sns:Publish"
         ]
         Resource = [
+          aws_sns_platform_application.fcm[0].arn,
           "arn:aws:sns:${var.aws_region}:${data.aws_caller_identity.current.account_id}:endpoint/GCM/${aws_sns_platform_application.fcm[0].name}/*"
         ]
       }
