@@ -49,6 +49,10 @@ config.json
 # QR code holding the API key (make qrcode)
 checkin-qr.png
 
+# Firebase: the service account key (a secret) and the client settings
+firebase*.json
+google-services.json
+
 # Logs
 logs/
 *.log
