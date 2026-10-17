@@ -6,16 +6,17 @@ pre-built Lambda binaries, the Terraform configuration, the example configs
 and (from v0.2.0) the Android check-in app; see
 [Deploying from a Release](#deploying-from-a-release). To build
 from source instead, clone the repository and see
-[Build the Application](#build-the-application).
+[DEVELOPMENT.md](DEVELOPMENT.md#building), then follow this guide from
+[Pre-deployment Setup](#pre-deployment-setup).
 
 ## Prerequisites
 
 1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, DynamoDB, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
 2. **Terraform 1.5+**: For infrastructure deployment
 3. **AWS CLI**: Configured with credentials
-4. **Go 1.26+** (see `go.mod`): Only to build from source
-5. **Make**: Only to build from source (optional but recommended)
-6. **A Firebase project** (free): Only for push notifications to the Android
+4. **Go 1.26+** (see `go.mod`) and **Make**: Only to build from source
+   (see [DEVELOPMENT.md](DEVELOPMENT.md)), or to make the app's setup QR code
+5. **A Firebase project** (free): Only for push notifications to the Android
    app; see [Push Notifications](#5-push-notifications-optional)
 
 ## Deploying from a Release
@@ -99,8 +100,7 @@ matter, because Terraform sets it when it zips them for Lambda.
 Follow [Pre-deployment Setup](#pre-deployment-setup) and
 [Deploy Infrastructure](#deploy-infrastructure) below, working in
 `deadmanshandle-<version>/`: `config.json` goes next to `terraform/`, and you
-run Terraform from `terraform/`. Skip
-[Build the Application](#build-the-application).
+run Terraform from `terraform/`.
 
 ### Upgrading to a Later Release
 
@@ -237,22 +237,6 @@ Key variables:
   default) leaves push off. See
   [Push Notifications](#5-push-notifications-optional)
 
-## Build the Application
-
-Only when building from source; skip this if you deployed from a release.
-
-```bash
-# Build the Lambda binaries
-make build
-
-# Or manually:
-mkdir -p bin/http bin/scheduled bin/docwatch bin/alarmpush
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
-```
-
 ## Deploy Infrastructure
 
 ### Step 1: Initialize Terraform
@@ -326,14 +310,8 @@ The API is throttled to about one request a minute, shared by all callers, not
 per client. API Gateway throttles on a best-effort basis, so rapid calls are
 mostly, but not always, rejected with HTTP 429.
 
-Expected response:
-```json
-{
-    "statusCode": 200,
-    "message": "Check-in successful",
-    "newTimeout": "2024-07-15T12:00:00Z"
-}
-```
+The response holds the new deadline; see
+[API Usage](README.md#check-in-endpoint) for its format.
 
 ### 2. Upload Document to S3
 
@@ -571,18 +549,6 @@ aws dynamodb update-item \
   --expression-attribute-values "{\":t\":{\"S\":\"$TIMEOUT\"},\":one\":{\"N\":\"1\"}}"
 ```
 
-## Testing
-
-Run tests before deployment:
-
-```bash
-# Run all tests
-make test
-
-# Or manually:
-go test -v ./...
-```
-
 ## Cleanup
 
 To remove all infrastructure:
@@ -615,6 +581,14 @@ Common issues:
 - Invalid configuration (see the rules under "Create Configuration File")
 - SES sender domain not verified
 - S3 document not found
+
+### Check-in Rejected
+
+- HTTP 401 `Missing API key` or `Invalid API key`: send the config's `apiKey`
+  in the `x-api-key` header. A new key can take 5 minutes to work.
+- HTTP 500 `Failed to retrieve configuration` or `Failed to parse
+  configuration`: the HTTP Lambda's logs give the cause. Check the parameter
+  exists and follows the rules under "Create Configuration File".
 
 ### Permission Denied Errors
 

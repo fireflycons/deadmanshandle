@@ -1,5 +1,48 @@
 # Project Structure
 
+## Architecture
+
+![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, alarms to the owner, and optional push notifications to the app through SNS and Firebase Cloud Messaging](docs/architecture.png)
+
+The diagram is drawn by `tools/architecture_diagram.py`; see
+[DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
+
+### AWS Services Used
+
+- **AWS Lambda**: Compute (3 functions, 4 with push)
+- **API Gateway**: HTTP endpoint for check-ins
+- **EventBridge**: Scheduled daily checks, and S3 upload events
+- **Parameter Store**: Configuration storage
+- **DynamoDB**: Timeout and delivery state
+- **S3**: Document storage
+- **SES**: Email delivery
+- **CloudWatch**: Logs (14-day retention) and alarms
+- **SNS**: Alarm emails to the owner, and push notifications to the app
+  through Firebase Cloud Messaging
+
+### Configuration and State
+
+The configuration is stored in Parameter Store as JSON (see
+[DEPLOYMENT.md](DEPLOYMENT.md#2-create-configuration-file)). The Lambdas only
+read it.
+
+What changes at run time is kept in one item of a DynamoDB table
+(`deadmanshandle-state`), whose updates are atomic, so Lambdas running at the
+same time cannot undo each other's writes:
+
+- `timeout`: seeded from the config file, then set by each check-in
+- `checkIns`: counts check-ins
+- `sentTo`: recipients who have already been sent the document
+- `ownerNotified`: whether the owner has been told that it was sent
+- `documentETag`: the document's ETag when last seen
+- `documentChangedAt`, `documentChangePending`: when its content last changed,
+  and whether the owner has yet to be told
+- `pushToken`: the app's push token, sent with its last check-in
+
+A check-in clears `sentTo` and `ownerNotified`.
+
+## Layout
+
 ```
 deadmanshandle/
 │
@@ -303,52 +346,11 @@ Benefits:
 - Easy to add new adapters or handlers
 - Clear separation of concerns
 
-## Testing Strategy
+## Building, Testing and Deploying
 
-### Unit Tests
-Located in `*_test.go` files within each package:
-- Domain service tests with time injection
-- HTTP and scheduled handler tests with mocks
-- Configuration parsing and validation tests
-- SES adapter tests that parse the built MIME message
-
-### Test Execution
-```bash
-go test -v ./...           # Run all tests
-go test -cover ./...       # With coverage
-go test -run TestName ./internal/domain  # Specific test
-```
-
-### Mock Usage
-Handler tests use the mocks from `internal/mocks/` for the ports, and the real
-domain service with a fixed clock:
-```go
-configStore := mocks.NewMockConfigStore()
-emailSender := mocks.NewMockEmailSender()
-validator := mocks.NewMockAPIKeyValidator()
-service := domain.NewDeadmansHandleServiceWithTime(now)
-```
-
-## Build Process
-
-### Local Development
-```bash
-make build          # Builds the Lambda handlers
-make test           # Runs tests
-make clean          # Removes artifacts
-make qrcode         # Writes the setup QR code, checkin-qr.png
-make android-test   # Android unit tests and lint
-make android        # Android release APK
-```
-
-### Production Build
-- Compiles for Linux ARM64 (Lambda architecture), CGO off, `lambda.norpc`
-- Names each binary `bootstrap`, as the `provided.al2023` runtime expects
-
-### Terraform Deployment
-- Zips each binary (with the executable bit set) into `terraform/build/`
-- Uploads the zips directly as the Lambda functions' code
-- Manages all AWS infrastructure
+See [DEVELOPMENT.md](DEVELOPMENT.md): [Building](DEVELOPMENT.md#building),
+[Testing Guidelines](DEVELOPMENT.md#testing-guidelines) and
+[Deploying Changes](DEVELOPMENT.md#deploying-changes).
 
 ## Environment Variables
 
@@ -361,42 +363,16 @@ make android        # Android release APK
 - `PUSH_PLATFORM_APPLICATION_ARN`: SNS platform application for push, empty
   when push is off (scheduled, docwatch and alarmpush)
 
-### Build/Deployment
-- `GOOS`: Operating system (linux for Lambda)
-- `GOARCH`: Architecture (arm64 for Lambda)
-- AWS credentials via standard AWS CLI
-
 ## Dependencies
 
-### Go Dependencies (Standard Library Focus)
 - `github.com/aws/aws-lambda-go`: Lambda runtime
 - `github.com/aws/aws-sdk-go-v2`: AWS SDK
 - `github.com/skip2/go-qrcode`: QR codes, in `cmd/qrconfig` only
 - Standard library: encoding/json, time, context, log/slog, mime, etc.
 
-### External Tools
-- Go 1.26+ (see `go.mod`)
-- Terraform 1.5+
-- AWS CLI
-- Make (optional)
-- Android Studio, for its JDK and the Android SDK (the Android app only)
+The tools needed to build are in
+[DEVELOPMENT.md](DEVELOPMENT.md#1-install-dependencies).
 
 ## Security Considerations
 
-1. **API Key Validation**: Uses `subtle.ConstantTimeCompare` to prevent timing attacks
-2. **S3 Security**: All public access blocked, optional versioning (`document_versioning`, off by default) with old versions expiring after 30 days
-3. **Parameter Store**: The configuration, which holds the API key, is a SecureString
-4. **IAM Least Privilege**: Lambda role only has necessary permissions
-5. **SES Verification**: The sender domain is verified with DKIM by Terraform
-6. **Input Validation**: `Config.Validate` checks every configuration field
-7. **Logging**: The API key and the document are never logged
-
-## Deployment Flow
-
-1. Developer runs `make build` to compile binaries
-2. Developer runs Terraform `init`, `plan`, `apply`
-3. Terraform archives binaries and creates Lambda functions
-4. API Gateway routes HTTP requests to HTTP handler
-5. EventBridge triggers scheduled handler daily
-6. Handlers use adapters to call AWS services
-7. Core domain logic remains independent and testable
+See [README.md](README.md#security-considerations).
