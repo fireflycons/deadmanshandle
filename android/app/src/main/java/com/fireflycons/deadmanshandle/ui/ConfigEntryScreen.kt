@@ -29,16 +29,19 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.fireflycons.deadmanshandle.R
 import com.fireflycons.deadmanshandle.config.CheckInConfig
+import com.fireflycons.deadmanshandle.config.PushOptions
 
 /**
  * Entering the endpoint and API key, by hand or from a setup QR code.
  * [onScan] scans one and passes its config to the callback it is given, which
- * fills the fields. [onSave] gets a valid config; [onCancel] is null when
- * there is no saved config to go back to.
+ * fills the fields. The push settings come only from a scan, so editing by
+ * hand keeps [initialPush]. [onSave] gets a valid config; [onCancel] is null
+ * when there is no saved config to go back to.
  */
 @Composable
 fun ConfigEntryScreen(
     initialEndpoint: String,
+    initialPush: PushOptions?,
     message: String?,
     onScan: (onScanned: (CheckInConfig) -> Unit) -> Unit,
     onSave: (CheckInConfig) -> Unit,
@@ -49,6 +52,7 @@ fun ConfigEntryScreen(
     // Not saveable, so the key stays out of the saved instance state
     var apiKey by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
+    var push by remember { mutableStateOf(initialPush) }
     // Errors are shown once Save has been pressed
     var checked by rememberSaveable { mutableStateOf(false) }
 
@@ -68,11 +72,16 @@ fun ConfigEntryScreen(
             onScan { config ->
                 endpoint = config.endpoint
                 apiKey = config.apiKey
+                push = config.push
                 checked = false
             }
         }) {
             Text(stringResource(R.string.scan_qr))
         }
+        Text(
+            push?.let { stringResource(R.string.push_from_qr, it.projectId) } ?: stringResource(R.string.push_none),
+            style = MaterialTheme.typography.bodySmall,
+        )
         OutlinedTextField(
             value = endpoint,
             onValueChange = { endpoint = it },
@@ -114,7 +123,7 @@ fun ConfigEntryScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = {
                 checked = true
-                if (endpointValid && apiKeyValid) onSave(CheckInConfig(endpoint.trim(), apiKey))
+                if (endpointValid && apiKeyValid) onSave(CheckInConfig(endpoint.trim(), apiKey, push))
             }) {
                 Text(stringResource(R.string.save))
             }

@@ -1,13 +1,15 @@
 package com.fireflycons.deadmanshandle.checkin
 
 import com.fireflycons.deadmanshandle.config.CheckInConfig
+import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
 /** Checks in to the API. [checkIn] blocks, so call it off the main thread. */
 class CheckInClient {
-    fun checkIn(config: CheckInConfig): CheckInResult {
+    /** Checks in, registering [pushToken] for push notifications if given */
+    fun checkIn(config: CheckInConfig, pushToken: String? = null): CheckInResult {
         val connection = try {
             URL(checkInUrl(config.endpoint)).openConnection() as HttpURLConnection
         } catch (e: IOException) {
@@ -18,10 +20,11 @@ class CheckInClient {
             connection.setRequestProperty("x-api-key", config.apiKey)
             connection.connectTimeout = TIMEOUT_MILLIS
             connection.readTimeout = TIMEOUT_MILLIS
-            // An empty body
+            val request = checkInBody(pushToken)
+            if (request.isNotEmpty()) connection.setRequestProperty("Content-Type", "application/json")
             connection.doOutput = true
-            connection.setFixedLengthStreamingMode(0)
-            connection.outputStream.close()
+            connection.setFixedLengthStreamingMode(request.size)
+            connection.outputStream.use { it.write(request) }
 
             val status = connection.responseCode
             val stream = if (status < 400) connection.inputStream else connection.errorStream
@@ -38,3 +41,10 @@ class CheckInClient {
         const val TIMEOUT_MILLIS = 15_000
     }
 }
+
+/**
+ * The check-in request's body: `{"pushToken":"…"}`, as
+ * internal/handlers.HTTPHandler reads it, or empty without a token
+ */
+fun checkInBody(pushToken: String?): ByteArray =
+    if (pushToken == null) ByteArray(0) else JSONObject().put("pushToken", pushToken).toString().toByteArray()

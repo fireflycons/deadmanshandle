@@ -24,6 +24,8 @@ from diagrams.aws.integration import Eventbridge, SimpleNotificationServiceSns, 
 from diagrams.aws.management import Cloudwatch, CloudwatchLogs, SystemsManagerParameterStore
 from diagrams.aws.network import APIGateway, Route53
 from diagrams.aws.storage import S3
+from diagrams.firebase.grow import Messaging
+from diagrams.generic.device import Mobile
 
 repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(repo, "docs", "architecture")
@@ -63,6 +65,10 @@ with Diagram(
     owner = User("Owner")
 
     with Cluster("AWS account (one region)"):
+        with Cluster("Push (optional)"):
+            alarmpush_fn = Lambda("alarmpush")
+            platform = SimpleNotificationServiceSns("Platform application\n(FCM HTTP v1)")
+
         with Cluster("Check-in"):
             api = APIGateway("HTTP API\nPOST /checkin")
             http_fn = Lambda("http")
@@ -87,17 +93,19 @@ with Diagram(
 
         with Cluster("Monitoring"):
             dlq = SimpleQueueServiceSqs("Dead-letter\nqueue")
-            alarms = Cloudwatch("CloudWatch alarms\nerrors, not run,\nDLQ, API 4xx")
+            alarms = Cloudwatch("CloudWatch alarms\nerrors, not run,\nDLQ, API 4xx, push")
             topic = SimpleNotificationServiceSns("Alarm topic")
             logs = CloudwatchLogs("Logs\n(14 days)")
 
+    fcm = Messaging("Firebase Cloud\nMessaging")
     inbox = User("Owner's inbox")
+    phone = Mobile("Owner's phone\n(app)")
     recipients = Users("Recipients")
 
     # Check-in
     owner >> edge("check in\n(x-api-key)", PINK) >> api >> http_fn
     http_fn >> edge("read config\n(cached 5 min)") >> config
-    http_fn >> edge("reset timeout") >> state
+    http_fn >> edge("reset timeout,\npush token") >> state
 
     # Daily run
     schedule >> scheduled_fn
@@ -121,6 +129,14 @@ with Diagram(
     [schedule, upload_rule] >> edge("failed delivery", RED, "dashed") >> dlq
     dlq >> alarms >> topic >> edge("alarm email", RED) >> inbox
 
-    # Layout only: SES in the column after the data stores, logs bottom left
+    # Push: owner notices and alarms also go to the app, through FCM. The
+    # edges into the row don't move the rest of the layout.
+    [scheduled_fn, docwatch_fn] >> edge("owner notices", PINK, constraint="false") >> platform
+    topic >> edge("alarms", RED, constraint="false") >> alarmpush_fn
+    alarmpush_fn >> platform >> fcm >> edge("push", PINK) >> phone
+
+    # Layout only: SES in the column after the data stores, logs bottom left,
+    # and the push row under the alarms and the topic
     bucket >> Edge(style="invis") >> ses
     logs >> Edge(style="invis") >> dlq
+    dlq >> Edge(style="invis") >> alarmpush_fn

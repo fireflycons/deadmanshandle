@@ -11,6 +11,8 @@ The application owner must periodically check in via the HTTP API to reset a tim
 If the time till timeout is less than a configurable days, then the owner address is emailed to warn that a check-in is needed.
 The above logic for managing count-downs and emails occurs when the lambda is invoked via Event Bridge.
 
+The owner's emails, and the alarm emails, can also be pushed to the Android check-in app (see client-app.md).
+
 Configuration is stored in parameter store as JSON
 ```json
 {

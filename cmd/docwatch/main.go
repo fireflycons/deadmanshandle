@@ -13,10 +13,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/ses"
+	"github.com/aws/aws-sdk-go-v2/service/sns"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
 	"github.com/fireflycons/deadmanshandle/internal/handlers"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 var documentWatchHandler *handlers.DocumentWatchHandler
@@ -54,11 +56,17 @@ func init() {
 	documentStore := adapters.NewS3DocumentStore(s3Client)
 	emailSender := adapters.NewSESEmailSender(sesClient, os.Getenv("SENDER_EMAIL"))
 
+	// Push is set up only when Terraform has created the platform application
+	var pushSender ports.PushSender
+	if arn := os.Getenv("PUSH_PLATFORM_APPLICATION_ARN"); arn != "" {
+		pushSender = adapters.NewSNSPushSender(sns.NewFromConfig(cfg), arn)
+	}
+
 	// Initialize service
 	service := domain.NewDeadmansHandleService()
 
 	// Initialize handler
-	watcher := handlers.NewDocumentWatcher(stateStore, emailSender, service)
+	watcher := handlers.NewDocumentWatcher(stateStore, emailSender, pushSender, service)
 	documentWatchHandler = handlers.NewDocumentWatchHandler(
 		configStore,
 		documentStore,

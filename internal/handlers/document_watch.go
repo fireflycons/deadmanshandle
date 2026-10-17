@@ -18,6 +18,7 @@ import (
 type DocumentWatcher struct {
 	stateStore  ports.StateStore // Holds the recorded ETag
 	emailSender ports.EmailSender
+	pushSender  ports.PushSender // nil when push is not set up
 	service     *domain.DeadmansHandleService
 }
 
@@ -25,11 +26,13 @@ type DocumentWatcher struct {
 func NewDocumentWatcher(
 	stateStore ports.StateStore,
 	emailSender ports.EmailSender,
+	pushSender ports.PushSender,
 	service *domain.DeadmansHandleService,
 ) *DocumentWatcher {
 	return &DocumentWatcher{
 		stateStore:  stateStore,
 		emailSender: emailSender,
+		pushSender:  pushSender,
 		service:     service,
 	}
 }
@@ -81,6 +84,7 @@ func (w *DocumentWatcher) Check(ctx context.Context, cfg *config.Config, doc dom
 		}
 
 		email := w.service.DocumentChangedEmail(cfg, state, doc, changedAt, origin)
+		pushToOwner(ctx, w.pushSender, state.PushToken, email)
 		if err := w.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, nil); err != nil {
 			return fmt.Errorf("sending document change notice to %s (it stays pending): %w", email.To, err)
 		}

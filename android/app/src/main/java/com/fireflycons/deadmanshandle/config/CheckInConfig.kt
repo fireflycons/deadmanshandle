@@ -4,17 +4,18 @@ import java.net.URI
 import java.net.URISyntaxException
 
 /**
- * What the app needs to check in: the API endpoint and the API key. The
- * rules match the Go side (internal/qrconfig and Config.Validate).
+ * What the app needs to check in: the API endpoint and the API key, and the
+ * push settings if the deployment has push notifications. The rules match
+ * the Go side (internal/qrconfig and Config.Validate).
  */
-data class CheckInConfig(val endpoint: String, val apiKey: String) {
+data class CheckInConfig(val endpoint: String, val apiKey: String, val push: PushOptions? = null) {
     init {
         require(isValidEndpoint(endpoint)) { "The API endpoint is not an https URL" }
         require(isValidApiKey(apiKey)) { "The API key is empty" }
     }
 
     // The key is secret, so keep it out of logs and crash reports
-    override fun toString() = "CheckInConfig(endpoint=$endpoint, apiKey=***)"
+    override fun toString() = "CheckInConfig(endpoint=$endpoint, apiKey=***, push=$push)"
 
     companion object {
         /** Whether [endpoint] is an https URL with a host */

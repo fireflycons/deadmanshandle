@@ -28,3 +28,8 @@
 
 * Adjust CI script to build and test andriod code
 * Adjust Release script to add APK to release artifacts
+
+## Push notifications
+
+* The app can receive push notifications for all the same owner messages sent via email, and the alarms.
+* Implemented with Firebase Cloud Messaging through SNS mobile push. Each deployment has its own Firebase project, whose client settings come from the setup QR code, so the released APK stays generic. Push is optional.

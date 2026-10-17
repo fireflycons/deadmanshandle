@@ -37,6 +37,16 @@ jobs:
       - name: Build
         run: make build
 
+      # The QR code CLI runs on the deployer's computer, so it is built for
+      # each desktop platform
+      - name: Build QR code CLI
+        run: |
+          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
+            os=${target%/*} arch=${target#*/} ext=
+            [[ $os == windows ]] && ext=.exe
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -o "bin/qrconfig/qrconfig-$os-$arch$ext" ./cmd/qrconfig
+          done
+
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -62,23 +72,27 @@ jobs:
           make android
           rm "$ANDROID_KEYSTORE_FILE"
 
-      # Each zip holds an executable bootstrap at its root, ready for Lambda.
-      # The tarball has the Terraform configuration and example configs, laid
-      # out as in the repository, so the zips unpack into its bin/ directory.
-      # The APK is the Android check-in app.
+      # One zip, unpacking to deadmanshandle-v<VERSION>/ ready to deploy: the
+      # Terraform configuration and example config laid out as in the
+      # repository, each Lambda's executable bootstrap in bin/ where Terraform
+      # expects it, the Android check-in app in app/, and the QR code CLI
+      # that sets the app up in qrconfig/.
       - name: Package
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          mkdir dist
-          for fn in http scheduled docwatch; do
-            (cd "bin/$fn" && zip -X -q "../../dist/$fn.zip" bootstrap)
+          pkg="deadmanshandle-v$VERSION"
+          mkdir dist stage
+          git archive --format=tar --prefix="$pkg/" \
+            HEAD terraform config.example.json LICENSE ':!terraform/.tflint.hcl' \
+            | tar -x -C stage
+          for fn in http scheduled docwatch alarmpush; do
+            install -D -m 755 "bin/$fn/bootstrap" "stage/$pkg/bin/$fn/bootstrap"
           done
-          git archive --format=tar.gz --prefix="deadmanshandle-v$VERSION/" \
-            -o "dist/deadmanshandle-terraform-v$VERSION.tar.gz" \
-            HEAD terraform config.example.json LICENSE ':!terraform/.tflint.hcl'
-          cp android/app/build/outputs/apk/release/app-release.apk "dist/deadmanshandle-v$VERSION.apk"
-          (cd dist && sha256sum *.zip *.tar.gz *.apk > SHA256SUMS)
+          install -D -m 644 android/app/build/outputs/apk/release/app-release.apk "stage/$pkg/app/$pkg.apk"
+          install -D -m 755 -t "stage/$pkg/qrconfig" bin/qrconfig/*
+          (cd stage && zip -X -q -r "../dist/$pkg.zip" "$pkg")
+          (cd dist && sha256sum *.zip > SHA256SUMS)
 
       - name: Release notes
         env:

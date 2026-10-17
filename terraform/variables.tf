@@ -47,6 +47,17 @@ variable "document_versioning" {
   default     = false
 }
 
+variable "firebase_service_account_file" {
+  description = "Path to the Firebase project's service account key (JSON), relative to the directory Terraform runs in. Setting it turns on push notifications to the Android app; the app gets the project's client settings from the setup QR code. Empty (the default) leaves push off. The key is kept in the Terraform state."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.firebase_service_account_file == "" || try(jsondecode(file(var.firebase_service_account_file)).type == "service_account", false)
+    error_message = "firebase_service_account_file must be empty or name a Firebase service account key file (JSON, with \"type\": \"service_account\")."
+  }
+}
+
 variable "schedule_expression" {
   description = "EventBridge schedule expression for daily check (cron format)"
   type        = string

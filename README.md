@@ -2,19 +2,6 @@
 
 A Golang AWS Lambda application that implements a deadman's handle - a mechanism to send documents if the owner fails to check in periodically.
 
-## Architecture
-
-![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, and alarms to the owner](docs/architecture.png)
-
-The diagram is drawn by `tools/architecture_diagram.py`; see
-[DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
-
-The application uses hexagonal architecture with clear separation between:
-- **Domain**: Core business logic (`internal/domain`)
-- **Ports**: Interfaces for AWS services (`internal/ports`)
-- **Adapters**: AWS service implementations (`internal/adapters`)
-- **Handlers**: Lambda entry points (`internal/handlers`)
-
 ## Features
 
 - **HTTP API Check-in**: Owner checks in via HTTP API to reset timeout
@@ -26,71 +13,19 @@ The application uses hexagonal architecture with clear separation between:
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
 - **Alarms**: The owner is emailed if the daily run fails or does not run, or if
   the check-in API is flooded
+- **Push Notifications** (optional): The owner's notices and the alarms are
+  also pushed to the Android app, through SNS and Firebase Cloud Messaging; see
+  [Push Notifications](DEPLOYMENT.md#5-push-notifications-optional)
 
-## Project Structure
-
-```
-.
-├── cmd/
-│   ├── http/          # HTTP Lambda handler
-│   ├── scheduled/     # Scheduled event Lambda handler
-│   ├── docwatch/      # Document change (S3 upload) Lambda handler
-│   └── qrconfig/      # CLI: QR code that sets up the Android app
-├── internal/
-│   ├── adapters/      # AWS service implementations
-│   ├── config/        # Configuration models
-│   ├── domain/        # Core business logic
-│   ├── handlers/      # Lambda handlers
-│   ├── mocks/         # Mock interfaces for testing
-│   ├── ports/         # Port interfaces
-│   └── qrconfig/      # The QR code's payload
-├── android/           # Android check-in app (Kotlin)
-├── terraform/         # Infrastructure as Code
-├── go.mod            # Go module definition
-└── Makefile          # Build and deployment targets
-```
-
-## Configuration
-
-Configuration is stored in AWS Parameter Store as JSON. The Lambdas only read
-it. The config file used to create it also holds the first `timeout`:
-
-```json
-{
-    "owner": "owner@example.com",
-    "recipients": [
-        "recipient1@example.com",
-        "recipient2@example.com"
-    ],
-    "resetDays": 30,
-    "warnDays": 7,
-    "timeout": "2030-01-01T00:00:00Z",
-    "apiKey": "your-secure-api-key"
-}
-```
-
-The config is validated by `terraform plan` and by the Lambdas; see
-[DEPLOYMENT.md](DEPLOYMENT.md) for the rules.
-
-What changes at run time is kept in one item of a DynamoDB table
-(`deadmanshandle-state`), whose updates are atomic, so Lambdas running at the
-same time cannot undo each other's writes:
-
-- `timeout`: seeded from the config file, then set by each check-in
-- `checkIns`: counts check-ins
-- `sentTo`: recipients who have already been sent the document
-- `ownerNotified`: whether the owner has been told that it was sent
-- `documentETag`: the document's ETag when last seen
-- `documentChangedAt`, `documentChangePending`: when its content last changed,
-  and whether the owner has yet to be told
+## How It Works
 
 Once the timeout passes, the scheduled Lambda emails the document to each
 recipient and sends the owner a notice that it has done so. Each send is
 recorded as it succeeds, so the document goes out only once and a failed send
 is retried on the next daily run without re-sending to anyone else. A
-check-in clears `sentTo` and `ownerNotified`. A send is only recorded if no
-check-in has happened since the run started, so a check-in during a run
-stops it after the email already being sent.
+check-in resets the timeout and clears the record of sends. A send is only
+recorded if no check-in has happened since the run started, so a check-in
+during a run stops it after the email already being sent.
 
 Every daily run also checks that the document is in S3. If it is missing, the
 owner is emailed each day until it is uploaded. If the timeout has passed while
@@ -111,62 +46,24 @@ run after the 24 hours are up. This gives time to check in, or to restore the
 document, if the change was not yours. The 24 hours run from when the change
 was found, even if the owner could not be emailed about it, so delivery
 cannot be held forever.
- The daily run only sends the exact version it checked: if the document is
+The daily run only sends the exact version it checked: if the document is
 replaced while the run is in progress, nothing is sent and the run's retry
 reports the change first.
 
-## Building
-
-### Prerequisites
-- Go 1.26+ (see `go.mod`)
-- Terraform 1.5+
-- AWS CLI
-- Make
-
-### Build Steps
-
-```bash
-# Build the Lambda binaries
-make build
-
-# Run tests
-make test
-
-# Clean build artifacts
-make clean
-```
+For the architecture diagram, the AWS services used and where the state is
+kept, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md#architecture).
 
 ## Deployment
 
-### Prerequisites
-1. Create a configuration JSON file with your settings
-2. Set `deployment.senderEmail` in it to an address whose domain you control.
-   Terraform verifies the domain in SES with DKIM; request SES production
-   access so that unverified recipients can receive mail
-3. Run `make build`; Terraform deploys the zipped binaries. Or skip building:
-   each [release](https://github.com/fireflycons/deadmanshandle/releases) has
-   the pre-built Lambdas, the Terraform configuration and the example configs
-   (see [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release))
+You don't need to build anything: each
+[release](https://github.com/fireflycons/deadmanshandle/releases) has the
+pre-built Lambdas, the Terraform configuration, the example config and the
+Android app. See:
 
-### Deploy with Terraform
-
-```bash
-# Initialize Terraform
-cd terraform
-terraform init
-
-# Plan the deployment
-terraform plan -var="config_file_path=/path/to/config.json"
-
-# Apply the deployment
-terraform apply -var="config_file_path=/path/to/config.json"
-
-# Upload the document (the default key is document.pdf)
-aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
-```
-
-After the first apply, the owner must confirm the SNS subscription email to
-receive alarms. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
+- [QUICKSTART.md](QUICKSTART.md): up and running in about 10 minutes
+- [DEPLOYMENT.md](DEPLOYMENT.md): the full guide, including the configuration
+  rules, setting up the Android app, push notifications, updating the
+  configuration and troubleshooting
 
 ## API Usage
 
@@ -176,6 +73,9 @@ receive alarms. See [DEPLOYMENT.md](DEPLOYMENT.md) for details.
 
 Headers:
 - `x-api-key`: Your API key from configuration
+
+Body (optional): `{"pushToken": "…"}`, the app's push token, which the owner's
+notices are then pushed to. Without one, the recorded token is kept.
 
 The Android app makes this request for you.
 
@@ -188,81 +88,25 @@ Response:
 }
 ```
 
-## Testing
-
-All core logic is thoroughly tested with mock interfaces, allowing unit tests without AWS dependencies:
-
-```bash
-# Run all tests
-go test -v ./...
-
-# Run specific test package
-go test -v ./internal/domain
-
-# Run with coverage
-go test -cover ./...
-```
-
-## Environment Variables
-
-- `CONFIG_PARAMETER_NAME`: Parameter Store path for configuration (all Lambdas)
-- `STATE_TABLE_NAME`: DynamoDB table holding the state (all Lambdas)
-- `SENDER_EMAIL`: Email address for notifications
-- `DOCUMENT_BUCKET`: S3 bucket containing the document (scheduled and docwatch)
-- `DOCUMENT_KEY`: S3 object key for the document (scheduled and docwatch)
-
-## AWS Services Used
-
-- **AWS Lambda**: Compute (3 functions)
-- **API Gateway**: HTTP endpoint for check-ins
-- **EventBridge**: Scheduled daily checks
-- **Parameter Store**: Configuration storage
-- **DynamoDB**: Timeout and delivery state
-- **S3**: Document storage
-- **SES**: Email delivery
-- **CloudWatch**: Logs (14-day retention) and alarms
-- **SNS**: Alarm emails to the owner
-
-## Design Patterns
-
-### Hexagonal Architecture
-- Core domain logic is completely decoupled from AWS services
-- Mock implementations for testing
-- Easy to add new adapters or handlers
-
-### Dependency Injection
-- All dependencies injected at handler creation
-- Testable by injecting mocks
-- Clear separation of concerns
-
-### Constant-Time Comparison
-- API key validation uses `subtle.ConstantTimeCompare` to prevent timing attacks
-
 ## Security Considerations
 
 - All S3 buckets have public access blocked
 - The Parameter Store config is a SecureString, since it holds the API key
 - Optional S3 bucket versioning (`document_versioning`); old versions expire after 30 days
 - API key validation uses constant-time comparison
+- The Lambdas' IAM role has only the permissions they need
+- Every configuration field is validated, by `terraform plan` and by the Lambdas
+- The API key and the document are never logged
 - The SES sender domain is verified with DKIM by Terraform
 
-## Troubleshooting
+## Documentation
 
-### Lambda Execution Errors
-- Check CloudWatch logs for the Lambda functions; failures are logged with their error
-- Verify IAM role has correct permissions
-- Ensure the Parameter Store configuration is valid (see the rules in DEPLOYMENT.md)
-
-### Email Not Sending
-- Check the SES sender domain is verified (DKIM records in DNS)
-- In the SES sandbox, only verified recipients receive mail; request production access
-- Check SES sending limits
-- Review email addresses in configuration
-
-### EventBridge Not Triggering
-- Verify Lambda has permission from EventBridge
-- Check EventBridge rule is enabled
-- The schedule expression is in UTC
+- [QUICKSTART.md](QUICKSTART.md): a first deployment
+- [DEPLOYMENT.md](DEPLOYMENT.md): deploying, configuring and running it
+- [DEVELOPMENT.md](DEVELOPMENT.md): working with the source: building the
+  Lambdas and the Android app, testing, CI and releases
+- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md): the architecture and the
+  layout of the repository
 
 ## License
 

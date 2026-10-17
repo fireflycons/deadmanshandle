@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -45,6 +46,16 @@ type HTTPResponse struct {
 	NewTimeout string `json:"newTimeout,omitempty"`
 }
 
+// checkInRequest is the optional body of a check-in. The app sends its push
+// token; other callers send nothing.
+type checkInRequest struct {
+	PushToken string `json:"pushToken"`
+}
+
+// maxPushTokenLength bounds the push token. FCM tokens are a few hundred
+// characters.
+const maxPushTokenLength = 4096
+
 // Handle processes HTTP API Gateway requests
 func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	log := slog.With("sourceIp", request.RequestContext.HTTP.SourceIP)
@@ -78,7 +89,7 @@ func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTT
 	// Process check-in. Setting the timeout also clears the delivery state,
 	// atomically, so a scheduled run cannot overwrite the check-in.
 	newTimeout := h.service.CheckIn(cfg)
-	if err := h.stateStore.CheckIn(ctx, newTimeout); err != nil {
+	if err := h.stateStore.CheckIn(ctx, newTimeout, pushToken(log, request)); err != nil {
 		log.Error("Check-in failed: saving the new timeout", "error", err)
 		return h.response(500, "Failed to save check-in"), nil
 	}
@@ -96,6 +107,51 @@ func (h *HTTPHandler) Handle(ctx context.Context, request events.APIGatewayV2HTT
 		StatusCode: 200,
 		Body:       string(respBody),
 	}, nil
+}
+
+// pushToken returns the push token from the request body, or empty if there
+// is none. A bad body is logged and ignored: it must not stop a check-in.
+func pushToken(log *slog.Logger, request events.APIGatewayV2HTTPRequest) string {
+	body := []byte(request.Body)
+	if request.IsBase64Encoded {
+		decoded, err := base64.StdEncoding.DecodeString(request.Body)
+		if err != nil {
+			log.Warn("Push token ignored: body is not valid base64", "error", err)
+			return ""
+		}
+		body = decoded
+	}
+	if len(body) == 0 {
+		return ""
+	}
+
+	var req checkInRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		log.Warn("Push token ignored: body is not valid JSON", "error", err)
+		return ""
+	}
+	if req.PushToken != "" && !validPushToken(req.PushToken) {
+		log.Warn("Push token ignored: malformed", "length", len(req.PushToken))
+		return ""
+	}
+	return req.PushToken
+}
+
+// validPushToken checks the token's length and that it uses only the
+// characters FCM tokens are made of
+func validPushToken(token string) bool {
+	if len(token) > maxPushTokenLength {
+		return false
+	}
+	for _, c := range token {
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9':
+		case c == '-', c == '_', c == ':', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (h *HTTPHandler) response(statusCode int, message string) events.APIGatewayV2HTTPResponse {
