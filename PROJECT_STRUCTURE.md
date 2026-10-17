@@ -195,7 +195,8 @@ deadmanshandle/
   - Pushes each CloudWatch alarm to the app
 
 - **qrconfig**: Command-line tool, not a Lambda
-  - Writes a PNG QR code that sets up the Android app (`make qrcode`)
+  - Writes a PNG QR code that sets up the Android app (`make qrcode`); each
+    release includes it for Windows, macOS and Linux
   - Reads the endpoint from the Terraform state and the API key from the
     config file, or both from Parameter Store with `-aws`
   - Adds the push settings from a Firebase `google-services.json` with

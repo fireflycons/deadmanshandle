@@ -542,13 +542,14 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   latest `master`.
 - **Release** (`release.yml`), on a push to `master` (a merged pull request):
   runs the CI checks, builds the Lambdas and the Android app, and creates the
-  GitHub release `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip`,
-  `docwatch.zip` and `alarmpush.zip`, each with an executable `bootstrap`
-  (linux/arm64);
-  `deadmanshandle-terraform-v<VERSION>.tar.gz`, with `terraform/`,
-  `config.example.json` and `LICENSE` (from `git archive`, so tracked files
-  only, without `.tflint.hcl`); `deadmanshandle-v<VERSION>.apk`, signed with
-  the release key; and `SHA256SUMS`. The notes link to
+  GitHub release `v<VERSION>`. Its assets are `SHA256SUMS` and
+  `deadmanshandle-v<VERSION>.zip`, which unzips to
+  `deadmanshandle-v<VERSION>/` with `terraform/`, `config.example.json` and
+  `LICENSE` (from `git archive`, so tracked files only, without
+  `.tflint.hcl`), each Lambda's executable `bootstrap` (linux/arm64) in
+  `bin/<function>/`, `app/deadmanshandle-v<VERSION>.apk`, signed with the
+  release key, and `qrconfig/qrconfig-<os>-<arch>`, the QR code CLI for
+  Windows, macOS and Linux on amd64 and arm64. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
 

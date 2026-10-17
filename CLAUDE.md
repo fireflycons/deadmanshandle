@@ -37,8 +37,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   - `push/`: Firebase setup, the messaging service, notifications.
   - `ui/`: the screens.
 - `terraform/`: AWS (API Gateway HTTP API, EventBridge, SSM, DynamoDB, S3,
-  SES, SNS/CloudWatch alarms; `push.tf` when push is on). It ships in release
-  tarballs, so it must work for other deployers.
+  SES, SNS/CloudWatch alarms; `push.tf` when push is on). It ships in the
+  release zip, so it must work for other deployers.
 
 ## Runtime behaviour (invariants to preserve)
 
@@ -230,8 +230,10 @@ make android        # Android release APK (debug-signed locally)
   - `CI gate`, the job required by `master`'s ruleset; add new jobs to its
     `needs`
 - **Release** (`release.yml`), on a merge to `master`: it creates
-  `v<VERSION>` with the Lambda zips, the Terraform tarball, the signed
-  `deadmanshandle-v<VERSION>.apk` and `SHA256SUMS`.
+  `v<VERSION>` with `SHA256SUMS` and one zip,
+  `deadmanshandle-v<VERSION>.zip`: Terraform, the example config, the Lambdas
+  in `bin/`, the signed APK in `app/` and `qrconfig` for each desktop
+  platform in `qrconfig/`, laid out ready to deploy.
   - The APK is signed from the repository secrets `ANDROID_KEYSTORE_BASE64`,
     `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, and the release fails
     without them.

@@ -2,8 +2,8 @@
 
 You don't need to build anything to deploy. Each
 [release](https://github.com/fireflycons/deadmanshandle/releases) has the
-pre-built Lambda binaries, the Terraform configuration, the example configs
-and (from v0.2.0) the Android check-in app; see
+pre-built Lambda binaries, the Terraform configuration, the example config
+and the Android check-in app, in a single zip; see
 [Deploying from a Release](#deploying-from-a-release). To build
 from source instead, clone the repository and see
 [DEVELOPMENT.md](DEVELOPMENT.md#building), then follow this guide from
@@ -15,7 +15,7 @@ from source instead, clone the repository and see
 2. **Terraform 1.5+**: For infrastructure deployment
 3. **AWS CLI**: Configured with credentials
 4. **Go 1.26+** (see `go.mod`) and **Make**: Only to build from source
-   (see [DEVELOPMENT.md](DEVELOPMENT.md)), or to make the app's setup QR code
+   (see [DEVELOPMENT.md](DEVELOPMENT.md))
 5. **A Firebase project** (free): Only for push notifications to the Android
    app; see [Push Notifications](#5-push-notifications-optional)
 
@@ -25,22 +25,17 @@ from source instead, clone the repository and see
 
 Pick a version from the
 [releases page](https://github.com/fireflycons/deadmanshandle/releases) and
-download its files: `deadmanshandle-terraform-<version>.tar.gz` (the Terraform
-configuration, example configs and licence), `http.zip`, `scheduled.zip`,
-`docwatch.zip` and `alarmpush.zip` (the Lambdas, built for linux/arm64;
-`alarmpush` is deployed only with push notifications),
-`deadmanshandle-<version>.apk` (the Android app; see
-[Setting Up the Android App](#setting-up-the-android-app)) and `SHA256SUMS`.
+download its two files: `deadmanshandle-<version>.zip`, which holds
+everything, and `SHA256SUMS`. (Releases before v0.3.0 have separate files;
+follow the DEPLOYMENT.md linked from their notes.)
 
 Bash (Linux, macOS, Git Bash):
 
 ```bash
 VERSION=v0.3.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
-mkdir deadmanshandle-download && cd deadmanshandle-download
-for f in "deadmanshandle-terraform-$VERSION.tar.gz" http.zip scheduled.zip docwatch.zip alarmpush.zip "deadmanshandle-$VERSION.apk" SHA256SUMS; do
-  curl -fsSLO "$BASE/$f"
-done
+curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
+curl -fsSLO "$BASE/SHA256SUMS"
 sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 ```
 
@@ -49,51 +44,43 @@ PowerShell:
 ```powershell
 $Version = 'v0.3.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
-New-Item -ItemType Directory deadmanshandle-download | Set-Location
-foreach ($f in "deadmanshandle-terraform-$Version.tar.gz", 'http.zip', 'scheduled.zip', 'docwatch.zip', 'alarmpush.zip', "deadmanshandle-$Version.apk", 'SHA256SUMS') {
-    Invoke-WebRequest "$Base/$f" -OutFile $f
-}
-Get-Content SHA256SUMS | ForEach-Object {
-    $hash, $file = $_ -split '\s+', 2
-    if ((Get-FileHash $file.TrimStart('*') -Algorithm SHA256).Hash -ne $hash) { throw "Checksum mismatch: $file" }
-}
+Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
+Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
+$hash = (-split (Get-Content SHA256SUMS))[0]
+if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
 With the GitHub CLI, `gh release download v0.3.0 -R fireflycons/deadmanshandle`
-downloads them all.
+downloads both.
 
-### 2. Unpack
-
-The tarball unpacks into `deadmanshandle-<version>/`, laid out like the
-repository. Unzip each Lambda into its `bin/` directory there, where Terraform
-expects it:
+### 2. Unzip
 
 ```bash
-tar -xzf "deadmanshandle-terraform-$VERSION.tar.gz"
+unzip -q "deadmanshandle-$VERSION.zip"
 cd "deadmanshandle-$VERSION"
-for fn in http scheduled docwatch alarmpush; do
-  mkdir -p "bin/$fn" && unzip -q "../$fn.zip" -d "bin/$fn"
-done
 ```
 
 ```powershell
-tar -xzf "deadmanshandle-terraform-$Version.tar.gz"
+Expand-Archive "deadmanshandle-$Version.zip" -DestinationPath .
 Set-Location "deadmanshandle-$Version"
-foreach ($fn in 'http', 'scheduled', 'docwatch', 'alarmpush') { Expand-Archive "..\$fn.zip" -DestinationPath "bin\$fn" }
 ```
 
-The result:
+The result is laid out like the repository, with the Lambdas already where
+Terraform expects them:
 
 ```
 deadmanshandle-v0.3.0/
-├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap
+├── app/deadmanshandle-v0.3.0.apk     # the Android app; see Setting Up the Android App
+├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
+├── qrconfig/                         # makes the app's setup QR code, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
 ```
 
-On Windows the `bootstrap` files lose their executable bit; that doesn't
-matter, because Terraform sets it when it zips them for Lambda.
+`alarmpush` is deployed only with push notifications. On Windows the
+`bootstrap` files lose their executable bit; that doesn't matter, because
+Terraform sets it when it zips them for Lambda.
 
 ### 3. Configure and Deploy
 
@@ -108,7 +95,7 @@ Terraform keeps its state in `terraform/terraform.tfstate`, in the directory
 you deployed from. Keep that directory, and back the state file up: without
 it, Terraform can't update or destroy what it created.
 
-To upgrade, download and unpack the new release as above, then copy across
+To upgrade, download and unzip the new release as above, then copy across
 your `config.json`, `terraform/terraform.tfvars` and
 `terraform/terraform.tfstate` (and the Firebase key, if you use push) from the
 old directory, and run
@@ -386,40 +373,80 @@ the key. `curl`, as above, works too.
 
 ### 1. Install the App
 
-Each release from v0.2.0 has the app as `deadmanshandle-<version>.apk`, signed
-with the project's release key. It isn't in Google Play: download it on the
-phone and open it, allowing your browser or file manager to install unknown
-apps when Android asks. To update, install a later release's APK over it; the
-config is kept.
+The app isn't in Google Play, so you install (sideload) the APK from the
+release: `app/deadmanshandle-<version>.apk` in the unzipped release. It is
+signed with the project's release key.
+
+**From the phone's files:**
+
+1. Copy the APK to the phone: over a USB cable (choose "File transfer" on the
+   phone, then copy it into the phone's `Download` folder), or through a cloud
+   drive such as Google Drive, or by emailing it to yourself.
+2. On the phone, open the APK from the Files app (Downloads), the Drive app or
+   the email.
+3. Android says that app isn't allowed to install unknown apps. Tap
+   **Settings**, turn on **Allow from this source**, and go back.
+4. Tap **Install**. If Google Play Protect warns about an unknown app, tap
+   **More details**, then **Install anyway** (the wording varies by phone).
+5. Optionally, turn **Allow from this source** off again: Settings > Apps >
+   Special app access > Install unknown apps, then the app you installed from.
+
+**Or with adb**, from a computer with the Android SDK platform tools: on the
+phone, turn on Developer options (tap Settings > About phone > Build number
+seven times), then USB debugging in them, connect the cable and accept the
+prompt on the phone. Then, in the unzipped release:
+
+```bash
+adb install -r app/deadmanshandle-v0.3.0.apk
+```
+
+**To update**, install a later release's APK the same way; the config is
+kept. Every release is signed with the same key, so it installs over the last
+one. A build signed with another key can't: Android refuses it rather than
+replace the app, and uninstalling erases the app's config.
 
 ### 2. Make the Setup QR Code
 
-`make qrcode` writes `checkin-qr.png`, a QR code holding the API endpoint and
-the API key, and with `-firebase` the push settings (see
-[Push Notifications](#5-push-notifications-optional)). It needs a clone of
-the repository and Go. By default it reads the endpoint from
-`terraform/terraform.tfstate` and the key from `config.json`:
+The release's `qrconfig` tool writes `checkin-qr.png`, a QR code holding the
+API endpoint and the API key, and with `-firebase` the push settings (see
+[Push Notifications](#5-push-notifications-optional)). It is in `qrconfig/`,
+built for each platform: pick the one for your computer.
+
+| Computer | Program |
+| --- | --- |
+| Windows (most PCs) | `qrconfig-windows-amd64.exe` |
+| Windows on Arm | `qrconfig-windows-arm64.exe` |
+| Mac with Apple silicon (M1 or later) | `qrconfig-darwin-arm64` |
+| Mac with an Intel processor | `qrconfig-darwin-amd64` |
+| Linux | `qrconfig-linux-amd64`, or `qrconfig-linux-arm64` on Arm |
+
+Run it from `deadmanshandle-<version>/`, where you deployed from. By default
+it reads the endpoint from `terraform/terraform.tfstate` and the key from
+`config.json`:
 
 ```bash
-make qrcode
+./qrconfig/qrconfig-linux-amd64
+```
+
+```powershell
+.\qrconfig\qrconfig-windows-amd64.exe
 ```
 
 To read the values the Lambdas use from Parameter Store instead, with the AWS
-credentials in the environment (for example after changing the `apiKey`):
-
-```bash
-make qrcode QRFLAGS=-aws
-```
-
-Without a clone, Go can run it straight from the module:
-
-```bash
-go run github.com/fireflycons/deadmanshandle/cmd/qrconfig@latest -aws
-```
+credentials in the environment (for example after changing the `apiKey`), add
+`-aws`. This works from any directory.
 
 `-out` and `-size` set the file and its width in pixels (default 1024),
 `-app` the Terraform `application_name` if it isn't `deadmanshandle`, and
-`-firebase` the Firebase project's `google-services.json`, for push.
+`-firebase` the Firebase project's `google-services.json`, for push. `-help`
+lists them.
+
+The programs aren't signed. On a Mac, if it says the program can't be opened,
+run `xattr -d com.apple.quarantine qrconfig/qrconfig-darwin-*` once. If
+Windows blocks it, run `Unblock-File .\qrconfig\*.exe` in PowerShell.
+
+From a clone of the repository, `make qrcode` runs it instead (add the flags
+with `QRFLAGS=`); see [DEVELOPMENT.md](DEVELOPMENT.md#the-setup-qr-code).
 
 **The PNG holds the API key.** Show it on a screen rather than printing it, and
 delete it once the app has scanned it. Git ignores `checkin-qr.png`.
@@ -466,8 +493,11 @@ released app works with any deployment.
 4. **Make a QR code with the push settings**, adding `-firebase`:
 
    ```bash
-   make qrcode QRFLAGS="-aws -firebase google-services.json"
+   ./qrconfig/qrconfig-linux-amd64 -aws -firebase google-services.json
    ```
+
+   with the program for your computer (see
+   [Make the Setup QR Code](#2-make-the-setup-qr-code)).
 
 5. **In the app**, tap **Change config**, scan the new code, tap **Save** and
    allow notifications. Then check in: each check-in sends the phone's push

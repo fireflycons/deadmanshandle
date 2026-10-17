@@ -20,10 +20,12 @@ You need a domain you control for the sender address; see
 
 ## 2. Download a Release (2 minutes)
 
-Download, verify and unpack a
-[release](https://github.com/fireflycons/deadmanshandle/releases), following
-[Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) steps 1
-and 2. Work in the unpacked `deadmanshandle-<version>/` directory from here on.
+From a [release](https://github.com/fireflycons/deadmanshandle/releases),
+download `deadmanshandle-<version>.zip` and `SHA256SUMS`, check the zip's
+checksum and unzip it; see
+[Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) for the
+commands. Work in the unzipped `deadmanshandle-<version>/` directory from here
+on. It also holds the Android app, in `app/`.
 
 To build from source instead, see [DEVELOPMENT.md](DEVELOPMENT.md#building)
 and work in the repository root.
@@ -89,8 +91,9 @@ emailed whenever it changes; see
 
 ## What's Next?
 
-- **The Android app**: check in with a fingerprint or the screen lock, and
-  optionally get your notices and alarms as push notifications; see
+- **The Android app**: sideload the APK from `app/`, check in with a
+  fingerprint or the screen lock, and optionally get your notices and alarms
+  as push notifications; see
   [Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app)
 - **Changing the configuration**: see
   [Updating the Configuration](DEPLOYMENT.md#updating-the-configuration)
