@@ -68,6 +68,13 @@ func runConfigShow(ctx context.Context, g globals, args []string) error {
 	}
 
 	report := cli.NewReport(s.configParameter(), configData, deployment, state, *showSecrets)
+	if _, gate, _, err := s.api(ctx); err != nil {
+		problems = append(problems, err.Error())
+	} else if throttle, err := gate.Throttle(ctx); err != nil {
+		problems = append(problems, "reading the API's throttle: "+err.Error())
+	} else {
+		report.API = cli.FormatThrottle(throttle)
+	}
 	report.Problems = append(report.Problems, problems...)
 	if *asJSON {
 		out, err := json.MarshalIndent(report, "", "  ")

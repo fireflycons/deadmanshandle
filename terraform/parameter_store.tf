@@ -100,6 +100,22 @@ resource "aws_ssm_parameter" "state_table" {
   })
 }
 
+resource "aws_ssm_parameter" "api_stage" {
+  name = "/${var.application_name}/api-stage"
+  type = "String"
+  value = jsonencode({
+    apiId      = aws_apigatewayv2_api.http_api.id
+    stage      = aws_apigatewayv2_stage.http_api_stage.name
+    rateLimit  = local.api_throttle_rate
+    burstLimit = local.api_throttle_burst
+    guardRule  = "" # the flood guard's check rule, when it is on
+  })
+
+  tags = merge(var.tags, {
+    Name = "API Stage"
+  })
+}
+
 resource "aws_ssm_parameter" "sender_email" {
   name  = "/${var.application_name}/sender-email"
   type  = "String"

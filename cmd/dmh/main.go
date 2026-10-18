@@ -42,6 +42,7 @@ type command struct {
 }
 
 var commands = map[string]command{
+	"api":      {"close or reopen the check-in API, as in a flood", runAPI},
 	"qr":       {"write the app's setup QR code", runQR},
 	"checkin":  {"check in, resetting the deadline", runCheckIn},
 	"config":   {"show or change the settings and state", runConfig},
@@ -49,7 +50,7 @@ var commands = map[string]command{
 }
 
 // commandOrder is the order commands are listed in the usage
-var commandOrder = []string{"checkin", "config", "document", "qr"}
+var commandOrder = []string{"api", "checkin", "config", "document", "qr"}
 
 func main() {
 	err := run(context.Background(), os.Args[1:])

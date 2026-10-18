@@ -1,5 +1,11 @@
 locals {
   api_endpoint = trimsuffix(aws_apigatewayv2_stage.http_api_stage.invoke_url, "/") # the $default stage's URL ends in "/"
+
+  # The stage's throttle, under which the API is open. Rate and burst 0 close
+  # it (dmh api disable, and the flood guard); reopening restores these, from
+  # the api-stage parameter.
+  api_throttle_rate  = 0.017 # ~1 request per minute (1/60)
+  api_throttle_burst = 1
 }
 
 resource "aws_apigatewayv2_api" "http_api" {
@@ -18,9 +24,11 @@ resource "aws_apigatewayv2_stage" "http_api_stage" {
   name        = "$default" # served at the API root, with no stage segment in the URL
   auto_deploy = true
 
+  # Changed outside Terraform while the API is closed, so an apply then
+  # reopens it
   default_route_settings {
-    throttling_rate_limit  = 0.017 # ~1 request per minute (1/60)
-    throttling_burst_limit = 1
+    throttling_rate_limit  = local.api_throttle_rate
+    throttling_burst_limit = local.api_throttle_burst
   }
 
   access_log_settings {

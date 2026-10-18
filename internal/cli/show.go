@@ -18,6 +18,8 @@ type Report struct {
 	Settings   Settings    `json:"settings"`
 	Deployment Deployment  `json:"deployment"`
 	State      *StateItems `json:"state,omitempty"` // nil if it could not be read
+	// Whether the check-in API is open; empty if it could not be read
+	API string `json:"api,omitempty"`
 	// Why the settings or state could not be read or are invalid
 	Problems []string `json:"problems,omitempty"`
 }
@@ -147,6 +149,11 @@ func (r Report) WriteText(w io.Writer, now time.Time) error {
 	row("documentBucket", orNone(r.Deployment.DocumentBucket))
 	row("stateTable", orNone(r.Deployment.StateTable))
 	row("senderEmail", orNone(r.Deployment.SenderEmail))
+
+	if r.API != "" {
+		_, _ = fmt.Fprintln(tw, "\nCheck-in API")
+		row("status", r.API)
+	}
 
 	if s := r.State; s != nil {
 		_, _ = fmt.Fprintln(tw, "\nState (DynamoDB)")

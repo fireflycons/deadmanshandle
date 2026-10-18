@@ -630,6 +630,18 @@ app's push token is kept.
 ./dmh/dmh-linux-amd64 checkin
 ```
 
+### Closing the API in a Flood
+
+`dmh api disable` closes the check-in API: it sets the stage's throttle to
+rate 0 and burst 0, so API Gateway refuses every request with HTTP 429
+without invoking the Lambda. Requests still reach API Gateway, but nothing
+gets through, not even with a valid API key. `dmh checkin` still works.
+`dmh api enable` reopens it with the throttle Terraform set, and
+`dmh api status` (or `dmh config show`) says whether it is open.
+
+The throttle is changed outside Terraform, so a `terraform apply` while the
+API is closed reopens it.
+
 ## Cleanup
 
 To remove all infrastructure:
@@ -737,7 +749,8 @@ parameter, then run `terraform apply` so the subscription follows.
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.
   While it lasts, check in with `dmh checkin` (see
-  [Checking in without the API](#checking-in-without-the-api)).
+  [Checking in without the API](#checking-in-without-the-api)), and consider
+  [closing the API](#closing-the-api-in-a-flood).
 
 With push notifications on, the `alarmpush` Lambda also pushes each alarm to
 the app, and there are three more alarms:
