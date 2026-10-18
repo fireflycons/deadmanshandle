@@ -102,7 +102,7 @@ resource "aws_cloudwatch_metric_alarm" "dlq_messages" {
 # A few mistakes by the owner stay under the threshold.
 resource "aws_cloudwatch_metric_alarm" "api_rejected_requests" {
   alarm_name          = "${var.application_name}-api-rejected-requests"
-  alarm_description   = "The check-in API is rejecting many requests (throttled, bad key or unknown route). A flood may be blocking check-ins; check in with the AWS CLI if needed."
+  alarm_description   = "The check-in API is rejecting many requests (throttled, bad key or unknown route). A flood may be blocking check-ins; check in with dmh checkin if needed. With the flood guard on, the API is closed until this alarm clears."
   namespace           = "AWS/ApiGateway"
   metric_name         = "4xx"
   dimensions          = { ApiId = aws_apigatewayv2_api.http_api.id, Stage = aws_apigatewayv2_stage.http_api_stage.name }

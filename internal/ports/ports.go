@@ -89,6 +89,17 @@ type APIGate interface {
 type CheckSchedule interface {
 	Enable(ctx context.Context) error
 	Disable(ctx context.Context) error
+	// Interval returns how often the check runs, in minutes, and whether it
+	// is running
+	Interval(ctx context.Context) (minutes int, enabled bool, err error)
+	// SetInterval changes how often the check runs, leaving it running or
+	// not as it was
+	SetInterval(ctx context.Context, minutes int) error
+}
+
+// AlarmStates reads CloudWatch alarm states
+type AlarmStates interface {
+	InAlarm(ctx context.Context, alarmName string) (bool, error)
 }
 
 // APIKeyValidator defines the interface for validating API keys

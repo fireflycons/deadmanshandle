@@ -113,7 +113,7 @@ func subcommand(ctx context.Context, g globals, name string, subs map[string]com
 	printUsage := func() {
 		_, _ = fmt.Fprintf(os.Stderr, "Usage: dmh %s <subcommand> [flags]\n\nSubcommands:\n", name)
 		for _, sub := range order {
-			_, _ = fmt.Fprintf(os.Stderr, "  %-10s %s\n", sub, subs[sub].summary)
+			_, _ = fmt.Fprintf(os.Stderr, "  %-15s %s\n", sub, subs[sub].summary)
 		}
 	}
 	if len(args) == 0 {

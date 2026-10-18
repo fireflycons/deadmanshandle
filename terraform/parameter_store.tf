@@ -108,7 +108,7 @@ resource "aws_ssm_parameter" "api_stage" {
     stage      = aws_apigatewayv2_stage.http_api_stage.name
     rateLimit  = local.api_throttle_rate
     burstLimit = local.api_throttle_burst
-    guardRule  = "" # the flood guard's check rule, when it is on
+    guardRule  = local.api_guard_rule_name # empty when the flood guard is off
   })
 
   tags = merge(var.tags, {

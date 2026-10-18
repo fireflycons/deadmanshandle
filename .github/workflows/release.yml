@@ -86,7 +86,7 @@ jobs:
           git archive --format=tar --prefix="$pkg/" \
             HEAD terraform config.example.json LICENSE ':!terraform/.tflint.hcl' \
             | tar -x -C stage
-          for fn in http scheduled docwatch alarmpush; do
+          for fn in http scheduled docwatch alarmpush apiguard; do
             install -D -m 755 "bin/$fn/bootstrap" "stage/$pkg/bin/$fn/bootstrap"
           done
           install -D -m 644 android/app/build/outputs/apk/release/app-release.apk "stage/$pkg/app/$pkg.apk"

@@ -55,6 +55,8 @@ deadmanshandle/
 │   │   └── main.go                       # S3 upload (EventBridge) handler
 │   ├── alarmpush/
 │   │   └── main.go                       # Alarm topic (SNS) handler: pushes alarms
+│   ├── apiguard/
+│   │   └── main.go                       # Flood guard: closes and reopens the API
 │   └── dmh/                              # CLI that manages the deployment
 │       ├── main.go                       # Global flags and command dispatch
 │       ├── session.go                    # AWS clients; finds the resources from Parameter Store
@@ -148,6 +150,7 @@ deadmanshandle/
 │   ├── ses.tf                            # SES domain identity and DKIM records
 │   ├── alarms.tf                         # SNS topic and CloudWatch alarms
 │   ├── push.tf                           # Push to the app (optional): SNS, alarmpush, alarms
+│   ├── api_guard.tf                      # Flood guard (optional): apiguard, its check rule
 │   ├── outputs.tf                        # Output values
 │   ├── terraform.tfvars.example          # Example variables file
 │   ├── .tflint.hcl                       # TFLint rules (AWS ruleset)
@@ -157,7 +160,8 @@ deadmanshandle/
 │   ├── http/bootstrap                    # HTTP handler binary
 │   ├── scheduled/bootstrap               # Scheduled handler binary
 │   ├── docwatch/bootstrap                # Document watch handler binary
-│   └── alarmpush/bootstrap               # Alarm push handler binary
+│   ├── alarmpush/bootstrap               # Alarm push handler binary
+│   └── apiguard/bootstrap                # API guard handler binary
 │
 ├── docs/
 │   └── architecture.png                  # AWS architecture diagram
@@ -205,11 +209,18 @@ deadmanshandle/
 - **alarmpush**: Alarm topic (SNS) handler, deployed only with push
   - Pushes each CloudWatch alarm to the app
 
+- **apiguard**: Alarm topic (SNS) and scheduled (EventBridge) handler,
+  deployed only with `api_flood_guard`
+  - Closes the check-in API when the rejected-requests alarm fires, and
+    reopens it once the alarm clears, telling the owner each time
+
 - **dmh**: Command-line tool, not a Lambda; each release includes it for
   Windows, macOS and Linux. It works on AWS directly with the caller's
   credentials, finding the resources from the parameters Terraform publishes
   (`/<app>/document-bucket`, `state-table`, `sender-email`, `api-endpoint`)
   - `dmh checkin` checks in on the DynamoDB state, without the API
+  - `dmh api` closes and reopens the check-in API, and sets the flood
+    guard's check interval
   - `dmh config show` and `dmh config set` show and change the settings and
     the state; `set` writes only a valid config
   - `dmh document get` and `dmh document put` download and replace the
@@ -333,6 +344,8 @@ Terraform files defining AWS resources:
 - **alarms.tf**: Alarms that email the owner if the daily run fails or does not run
 - **push.tf**: With `firebase_service_account_file` set, the SNS platform
   application for FCM, the alarmpush Lambda and the push alarms
+- **api_guard.tf**: With `api_flood_guard` on, the apiguard Lambda, its
+  subscription to the alarm topic, its check rule and its alarm
 - **variables.tf**: Input variables
 - **outputs.tf**: Output values
 - **data.tf**: Data sources (AWS account ID)
@@ -387,7 +400,11 @@ See [DEVELOPMENT.md](DEVELOPMENT.md): [Building](DEVELOPMENT.md#building),
 - `SENDER_EMAIL`: Sender address, in the SES-verified domain
 - `DOCUMENT_BUCKET`: S3 bucket name (scheduled and docwatch)
 - `PUSH_PLATFORM_APPLICATION_ARN`: SNS platform application for push, empty
-  when push is off (scheduled, docwatch and alarmpush)
+  when push is off (scheduled, docwatch, alarmpush and apiguard)
+- `API_ID`, `API_STAGE`, `API_RATE_LIMIT`, `API_BURST_LIMIT`: the check-in
+  API's stage and the throttle that opens it (apiguard)
+- `ALARM_NAME`, `CHECK_RULE_NAME`: the alarm that closes the API, and the
+  check rule (apiguard)
 
 ## Dependencies
 

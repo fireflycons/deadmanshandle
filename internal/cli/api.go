@@ -85,3 +85,40 @@ func FormatThrottle(throttle ports.Throttle) string {
 	return "open (rate " + strconv.FormatFloat(throttle.RateLimit, 'g', -1, 64) +
 		"/s, burst " + strconv.Itoa(int(throttle.BurstLimit)) + ")"
 }
+
+// ErrGuardOff is returned when the flood guard is needed but is off
+var ErrGuardOff = errors.New("the flood guard is off (Terraform's api_flood_guard)")
+
+// SetCheckInterval changes how often the flood guard checks whether to
+// reopen the API. schedule is nil if the guard is off.
+func SetCheckInterval(ctx context.Context, schedule ports.CheckSchedule, minutes int) error {
+	if schedule == nil {
+		return ErrGuardOff
+	}
+	if minutes < 1 || minutes > 1440 {
+		return errors.New("the interval must be from 1 to 1440 minutes")
+	}
+	if err := schedule.SetInterval(ctx, minutes); err != nil {
+		return fmt.Errorf("changing the check interval: %w", err)
+	}
+	return nil
+}
+
+// GuardStatus describes the flood guard. schedule is nil if the guard is off.
+func GuardStatus(ctx context.Context, schedule ports.CheckSchedule) (string, error) {
+	if schedule == nil {
+		return "off", nil
+	}
+	minutes, checking, err := schedule.Interval(ctx)
+	if err != nil {
+		return "", fmt.Errorf("reading the flood guard's check: %w", err)
+	}
+	every := "every minute"
+	if minutes != 1 {
+		every = "every " + strconv.Itoa(minutes) + " minutes"
+	}
+	if checking {
+		return "on; it closed the API and checks " + every + " whether to reopen it", nil
+	}
+	return "on; closes the API in a flood, then checks " + every + " whether to reopen it", nil
+}
