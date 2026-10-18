@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.3.0   # the release you want
+VERSION=v0.4.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.3.0'   # the release you want
+$Version = 'v0.4.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.3.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.4.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,8 +69,8 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.3.0/
-├── app/deadmanshandle-v0.3.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v0.4.0/
+├── app/deadmanshandle-v0.4.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
@@ -323,14 +323,31 @@ The response holds the new deadline; see
 
 ### 2. Upload Document to S3
 
-The key must match `documentKey` (default `document.pdf`). Recipients receive
-the attachment under the key's file name. Until the document is uploaded, each
-daily run emails the owner that it is missing.
+Upload it with `dmh document put` (see
+[Make the Setup QR Code](#2-make-the-setup-qr-code) for the program for your
+computer):
+
+```bash
+./dmh/dmh-linux-amd64 document put your-document.pdf
+```
+
+It uploads to a key named after the file, or to the one given with `-key`,
+and if that isn't the configured `documentKey`, it then sets `documentKey` to
+it. Recipients receive the attachment under the key's file name. A document
+already at the old key is left there; delete it if you no longer need it.
+`dmh document get` downloads the current document to the current directory.
+
+Until the document is uploaded, each daily run emails the owner that it is
+missing.
 
 The first upload is recorded silently. After that, the owner is emailed
 whenever the content changes, including your own updates. If the handle
 triggers within 24 hours of a change, delivery is held until the 24 hours are
-up; avoid replacing the document just before a deadline you might miss.
+up; avoid replacing the document just before a deadline you might miss. An
+upload under a new key may be reported by the next daily run rather than
+straight away.
+
+To upload with the AWS CLI instead, use the configured key:
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
@@ -418,7 +435,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.3.0.apk
+adb install -r app/deadmanshandle-v0.4.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is

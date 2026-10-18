@@ -15,9 +15,16 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   by `cmd/dmh`.
 - Four Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
   `cmd/docwatch` and `cmd/alarmpush` (deployed only with push).
-  `cmd/dmh` is the CLI. `dmh qr` writes the app's setup QR code
-  (`make qrcode`; `QRFLAGS=-aws` reads Parameter Store, `-firebase` adds the
-  push settings).
+  `cmd/dmh` is the CLI, working on AWS directly with the caller's
+  credentials (global `-app`, `-region` before the command):
+  - `checkin`; `config show` (`-show-secrets`, `-json`); `config set`
+    (settings, plus `-timeout`, which acts as a check-in, and
+    `-clear-push-token`); `document get`; `document put <file>` (uploads,
+    then points `documentKey` at it).
+  - `qr` writes the app's setup QR code (`make qrcode`; `QRFLAGS=-aws` reads
+    Parameter Store, `-firebase` adds the push settings).
+  - Each command looks up only the parameters it needs, so `config set`
+    works before an upgrade's `terraform apply`.
 - Hexagonal `internal/`:
   - `domain`: business rules and the clock (injectable).
   - `ports`: interfaces. Ports must not import domain.
@@ -26,6 +33,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
     `*domain.DeadmansHandleService` by design; ports are for the AWS side.
   - `mocks`: test doubles, with compile-time interface checks.
   - `config`: the config JSON type and `Config.Validate`.
+  - `cli`: the CLI's logic, with its own interfaces for the writes only it
+    makes (`PutConfig`, `ClearPushToken`, `Download`, `Upload`).
   - `qrconfig`: the QR payload, `{"v":1,"endpoint":"https://…","apiKey":"…"}`,
     with an optional `push` object (`projectId`, `appId`, `apiKey`,
     `senderId`). Older apps ignore it, so it didn't need a new `v`.

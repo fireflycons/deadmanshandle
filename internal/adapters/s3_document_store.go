@@ -64,3 +64,27 @@ func (s *S3DocumentStore) DocumentETag(ctx context.Context, bucket, key string) 
 	}
 	return "", false, err
 }
+
+// Download opens the current document, whatever its ETag. Only the CLI uses
+// it; the Lambdas fetch with GetDocument.
+func (s *S3DocumentStore) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return output.Body, nil
+}
+
+// Upload writes the document, encrypted by the bucket's default encryption.
+// body must be seekable (a file), so that the request can be signed.
+func (s *S3DocumentStore) Upload(ctx context.Context, bucket, key string, body io.Reader) error {
+	_, err := s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+		Body:   body,
+	})
+	return err
+}

@@ -1,9 +1,11 @@
 package mocks
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"slices"
 	"time"
 
@@ -172,6 +174,25 @@ func (m *MockDocumentStore) DocumentETag(ctx context.Context, bucket, key string
 		return "", false, nil
 	}
 	return fmt.Sprintf("\"%x\"", sha256.Sum256(data)), true, nil
+}
+
+// Download opens the document, as the CLI's document transfer
+func (m *MockDocumentStore) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	data, ok := m.Documents[bucket][key]
+	if !ok {
+		return nil, fmt.Errorf("no document s3://%s/%s", bucket, key)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+// Upload stores the document, as the CLI's document transfer
+func (m *MockDocumentStore) Upload(ctx context.Context, bucket, key string, body io.Reader) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	m.SetDocument(bucket, key, data)
+	return nil
 }
 
 func (m *MockDocumentStore) SetDocument(bucket, key string, data []byte) {

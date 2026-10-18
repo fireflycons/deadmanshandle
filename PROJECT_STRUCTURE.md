@@ -57,9 +57,20 @@ deadmanshandle/
 │   │   └── main.go                       # Alarm topic (SNS) handler: pushes alarms
 │   └── dmh/                              # CLI that manages the deployment
 │       ├── main.go                       # Global flags and command dispatch
+│       ├── session.go                    # AWS clients; finds the resources from Parameter Store
+│       ├── checkin.go                    # dmh checkin
+│       ├── config.go                     # dmh config show, dmh config set
+│       ├── document.go                   # dmh document get, dmh document put
 │       └── qr.go                         # dmh qr: QR code that sets up the Android app
 │
 ├── internal/                             # Application packages
+│   ├── cli/                              # The dmh CLI's logic, tested with the mocks
+│   │   ├── cli.go                        # Reading the config, check-in, time format
+│   │   ├── config.go                     # Changing the config and the timeout
+│   │   ├── show.go                       # The config show report
+│   │   ├── document.go                   # Document download and upload
+│   │   └── *_test.go                     # Tests
+│   │
 │   ├── adapters/                         # AWS service implementations
 │   │   ├── ssm_config_store.go           # Parameter Store adapter
 │   │   ├── caching_config_store.go       # Config cache for the HTTP Lambda
@@ -196,7 +207,14 @@ deadmanshandle/
   - Pushes each CloudWatch alarm to the app
 
 - **dmh**: Command-line tool, not a Lambda; each release includes it for
-  Windows, macOS and Linux
+  Windows, macOS and Linux. It works on AWS directly with the caller's
+  credentials, finding the resources from the parameters Terraform publishes
+  (`/<app>/document-bucket`, `state-table`, `sender-email`, `api-endpoint`)
+  - `dmh checkin` checks in on the DynamoDB state, without the API
+  - `dmh config show` and `dmh config set` show and change the settings and
+    the state; `set` writes only a valid config
+  - `dmh document get` and `dmh document put` download and replace the
+    document, `put` pointing `documentKey` at the upload
   - `dmh qr` writes a PNG QR code that sets up the Android app
     (`make qrcode`)
   - Reads the endpoint from the Terraform state and the API key from the
@@ -276,6 +294,13 @@ Defines contracts for external dependencies:
 - **EmailSender**: Send an email, with optional attachments
 - **PushSender**: Push a notice to the owner's phone
 - **APIKeyValidator**: Validate API keys
+
+### `internal/cli/` - CLI Logic
+- What `cmd/dmh` does, kept apart from the flags and AWS clients so that it
+  can be tested with the mocks
+- Its own small interfaces (`ConfigReadWriter`, `StateEditor`,
+  `DocumentTransfer`) for the writes only the CLI makes, which the adapters
+  implement
 
 ### `internal/qrconfig/` - Setup QR Code
 - Builds the QR code's JSON payload, `{"v":1,"endpoint":"…","apiKey":"…"}`,
