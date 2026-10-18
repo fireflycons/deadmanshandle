@@ -26,6 +26,7 @@ from diagrams.aws.network import APIGateway, Route53
 from diagrams.aws.storage import S3
 from diagrams.firebase.grow import Messaging
 from diagrams.generic.device import Mobile
+from diagrams.onprem.client import Client
 
 repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 out = sys.argv[1] if len(sys.argv) > 1 else os.path.join(repo, "docs", "architecture")
@@ -63,6 +64,7 @@ with Diagram(
     edge_attr=edge_attr,
 ):
     owner = User("Owner")
+    cli = Client("dmh CLI, with the\nowner's credentials:\nalso the document\nand the API's throttle")
 
     with Cluster("AWS account (one region)"):
         with Cluster("Push (optional)"):
@@ -78,11 +80,15 @@ with Diagram(
             scheduled_fn = Lambda("scheduled")
 
         with Cluster("Document changes"):
-            upload_rule = Eventbridge("Rule: document\nuploaded")
+            upload_rule = Eventbridge("Rule: uploads\nto the bucket")
             docwatch_fn = Lambda("docwatch")
 
+        with Cluster("Flood guard (optional)"):
+            check_rule = Eventbridge("Check rule\nevery N min, on\nwhile API closed")
+            apiguard_fn = Lambda("apiguard")
+
         with Cluster("Config and state"):
-            config = SystemsManagerParameterStore("Config (SecureString)\nread by every Lambda")
+            config = SystemsManagerParameterStore("Config (SecureString),\nparameters for dmh")
             state = Dynamodb("State item")
 
         bucket = S3("Document bucket")
@@ -93,7 +99,7 @@ with Diagram(
 
         with Cluster("Monitoring"):
             dlq = SimpleQueueServiceSqs("Dead-letter\nqueue")
-            alarms = Cloudwatch("CloudWatch alarms\nerrors, not run,\nDLQ, API 4xx, push")
+            alarms = Cloudwatch("CloudWatch alarms\nerrors, not run,\nDLQ, API 4xx, push,\nguard")
             topic = SimpleNotificationServiceSns("Alarm topic")
             logs = CloudwatchLogs("Logs\n(14 days)")
 
@@ -106,6 +112,11 @@ with Diagram(
     owner >> edge("check in\n(x-api-key)", PINK) >> api >> http_fn
     http_fn >> edge("read config\n(cached 5 min)") >> config
     http_fn >> edge("reset timeout,\npush token") >> state
+
+    # The CLI works on AWS directly, not through the Lambdas
+    owner >> edge(color=PINK) >> cli
+    cli >> edge("settings", PINK, "dashed") >> config
+    cli >> edge("check in", PINK, "dashed") >> state
 
     # Daily run
     schedule >> scheduled_fn
@@ -129,9 +140,18 @@ with Diagram(
     [schedule, upload_rule] >> edge("failed delivery", RED, "dashed") >> dlq
     dlq >> alarms >> topic >> edge("alarm email", RED) >> inbox
 
+    # Flood guard: the API 4xx alarm closes the API; the check reopens it
+    # once the alarm clears
+    topic >> edge("API 4xx alarm", RED, constraint="false") >> apiguard_fn
+    apiguard_fn >> edge("close, reopen\n(throttle 0/0)", RED, constraint="false") >> api
+    check_rule >> apiguard_fn
+    apiguard_fn >> edge("API notices", constraint="false") >> ses
+
     # Push: owner notices and alarms also go to the app, through FCM. The
     # edges into the row don't move the rest of the layout.
-    [scheduled_fn, docwatch_fn] >> edge("owner notices", PINK, constraint="false") >> platform
+    # Labelled once: more labels crowd the push cluster's title
+    scheduled_fn >> edge("owner notices", PINK, constraint="false") >> platform
+    [docwatch_fn, apiguard_fn] >> edge(color=PINK, constraint="false") >> platform
     topic >> edge("alarms", RED, constraint="false") >> alarmpush_fn
     alarmpush_fn >> platform >> fcm >> edge("push", PINK) >> phone
 
