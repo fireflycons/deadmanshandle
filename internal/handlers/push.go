@@ -17,8 +17,8 @@ func pushToOwner(ctx context.Context, sender ports.PushSender, token string, ema
 		return
 	}
 	if err := sender.Push(ctx, token, email.Kind.String(), email.Subject, email.Body); err != nil {
-		slog.Warn("Push failed", "kind", email.Kind, "error", err)
+		slog.Warn("Push failed", "kind", email.Kind.String(), "error", err)
 		return
 	}
-	slog.Info("Push sent", "kind", email.Kind)
+	slog.Info("Push sent", "kind", email.Kind.String())
 }

@@ -365,3 +365,34 @@ func TestProcessScheduledEventDeliveryHeld(t *testing.T) {
 		})
 	}
 }
+
+func TestAPIGuardEmails(t *testing.T) {
+	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
+	service := NewDeadmansHandleServiceWithTime(now)
+	cfg := &config.Config{Owner: "owner@example.com"}
+
+	tests := []struct {
+		name  string
+		email EmailAction
+		kind  EmailKind
+		want  []string
+	}{
+		{"closed", service.APIClosedEmail(cfg, 15), EmailAPIClosed,
+			[]string{"closed on Saturday 1 June 2024 at 12:00 UTC", "checked every 15 minutes", "dmh checkin", "dmh api enable"}},
+		{"closed, checked each minute", service.APIClosedEmail(cfg, 1), EmailAPIClosed, []string{"checked every minute"}},
+		{"closed, interval unknown", service.APIClosedEmail(cfg, 0), EmailAPIClosed, []string{"checked regularly"}},
+		{"reopened", service.APIReopenedEmail(cfg), EmailAPIReopened, []string{"reopened on Saturday 1 June 2024 at 12:00 UTC"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.email.Kind != tt.kind || tt.email.To != "owner@example.com" || !tt.email.ForOwner() || tt.email.Kind.String() != "api" {
+				t.Errorf("Expected an owner notice of kind api, got %+v", tt.email)
+			}
+			for _, want := range tt.want {
+				if !strings.Contains(tt.email.Body, want) {
+					t.Errorf("Expected body to contain %q, got %q", want, tt.email.Body)
+				}
+			}
+		})
+	}
+}

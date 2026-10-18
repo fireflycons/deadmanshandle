@@ -190,14 +190,17 @@ func TestReportText(t *testing.T) {
 	data, _ := json.Marshal(testConfig())
 	state := &config.State{Timeout: testNow.AddDate(0, 0, 3), CheckIns: 2}
 	deployment := Deployment{Endpoint: "https://api.example.com", DocumentBucket: "bucket"}
+	report := NewReport(testParam, data, deployment, state, false)
+	report.API = FormatThrottle(openThrottle)
 
 	var out bytes.Buffer
-	if err := NewReport(testParam, data, deployment, state, false).WriteText(&out, testNow); err != nil {
+	if err := report.WriteText(&out, testNow); err != nil {
 		t.Fatalf("WriteText failed: %v", err)
 	}
 	for _, want := range []string{
 		"a@example.com, b@example.com", "secr…", "docs/will.pdf", "https://api.example.com",
 		"Tuesday 4 June 2024 at 12:00 UTC", "in 3 days", "documentChangedAt", "(never)",
+		"Check-in API", "open (rate 0.017/s, burst 1)",
 	} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("Expected %q in:\n%s", want, out.String())

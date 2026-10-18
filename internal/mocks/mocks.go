@@ -21,6 +21,9 @@ var (
 	_ ports.EmailSender     = (*MockEmailSender)(nil)
 	_ ports.PushSender      = (*MockPushSender)(nil)
 	_ ports.APIKeyValidator = (*MockAPIKeyValidator)(nil)
+	_ ports.APIGate         = (*MockAPIGate)(nil)
+	_ ports.CheckSchedule   = (*MockCheckSchedule)(nil)
+	_ ports.AlarmStates     = (*MockAlarmStates)(nil)
 )
 
 // MockConfigStore is a mock implementation of ConfigStore
@@ -270,4 +273,58 @@ func NewMockAPIKeyValidator() *MockAPIKeyValidator {
 
 func (m *MockAPIKeyValidator) ValidateAPIKey(ctx context.Context, providedKey string, expectedKey string) bool {
 	return providedKey == expectedKey
+}
+
+// MockAPIGate is a mock implementation of APIGate
+type MockAPIGate struct {
+	Current ports.Throttle
+	SetErr  error // Returned by SetThrottle when set
+	Sets    int   // Successful SetThrottle calls
+}
+
+func (m *MockAPIGate) Throttle(ctx context.Context) (ports.Throttle, error) {
+	return m.Current, nil
+}
+
+func (m *MockAPIGate) SetThrottle(ctx context.Context, throttle ports.Throttle) error {
+	if m.SetErr != nil {
+		return m.SetErr
+	}
+	m.Current = throttle
+	m.Sets++
+	return nil
+}
+
+// MockCheckSchedule is a mock implementation of CheckSchedule
+type MockCheckSchedule struct {
+	Enabled bool
+	Minutes int
+}
+
+func (m *MockCheckSchedule) Enable(ctx context.Context) error {
+	m.Enabled = true
+	return nil
+}
+
+func (m *MockCheckSchedule) Disable(ctx context.Context) error {
+	m.Enabled = false
+	return nil
+}
+
+func (m *MockCheckSchedule) Interval(ctx context.Context) (int, bool, error) {
+	return m.Minutes, m.Enabled, nil
+}
+
+func (m *MockCheckSchedule) SetInterval(ctx context.Context, minutes int) error {
+	m.Minutes = minutes
+	return nil
+}
+
+// MockAlarmStates is a mock implementation of AlarmStates
+type MockAlarmStates struct {
+	InAlarmNames map[string]bool // Alarms in the ALARM state
+}
+
+func (m *MockAlarmStates) InAlarm(ctx context.Context, alarmName string) (bool, error) {
+	return m.InAlarmNames[alarmName], nil
 }

@@ -12,14 +12,17 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
 - Go module `github.com/fireflycons/deadmanshandle`. Standard library plus the
   AWS SDK only; the one exception is `github.com/skip2/go-qrcode`, used only
   by `cmd/dmh`.
-- Four Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
-  `cmd/docwatch` and `cmd/alarmpush` (deployed only with push).
+- Five Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
+  `cmd/docwatch`, `cmd/alarmpush` (deployed only with push) and
+  `cmd/apiguard` (deployed only with `api_flood_guard`).
   `cmd/dmh` is the CLI, working on AWS directly with the caller's
   credentials (global `-app`, `-region` before the command):
   - `checkin`; `config show` (`-show-secrets`, `-json`); `config set`
     (settings, plus `-timeout`, which acts as a check-in, and
     `-clear-push-token`); `document get`; `document put <file>` (uploads,
     then points `documentKey` at it).
+  - `api status|disable|enable|check-interval <minutes>`: closes and reopens
+    the check-in API, and sets the flood guard's check interval.
   - `qr` writes the app's setup QR code (`make qrcode`; `QRFLAGS=-aws` reads
     Parameter Store, `-firebase` adds the push settings).
   - Each command looks up only the parameters it needs, so `config set`
@@ -121,6 +124,24 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
   - `alarmpush` takes the alarm topic's notifications and pushes those in
     ALARM. Unlike the notices, it returns a failed push, which raises
     `alarmpush-errors`.
+- **Closing the API:** stage throttle rate 0 and burst 0 refuses every
+  request with 429 without invoking the HTTP Lambda. `dmh api disable` sets
+  it; reopening restores the values in `/<app>/api-stage`, which Terraform
+  publishes (`apiId`, `stage`, `rateLimit`, `burstLimit`, `guardRule`). The
+  throttle is changed outside Terraform, so an apply reopens the API.
+- **Flood guard** (`api_flood_guard`, on by default): `apiguard` subscribes
+  to the alarm topic.
+  - On `api-rejected-requests` entering ALARM, with the API open, it enables
+    the check rule, closes the API, and emails and pushes an `api` notice.
+    It ignores other alarms and an API that's already closed.
+  - The check rule (`rate(N minutes)`) is created disabled; Terraform
+    ignores its state and rate after that, so `dmh api check-interval`
+    changes the rate. Each check keeps the API closed while the alarm is in
+    ALARM (refused requests keep it there), otherwise reopens it, stops the
+    rule and sends the reopened notice. A check that finds the API open just
+    stops the rule.
+  - `dmh api disable`/`enable` stop the rule, so the guard never reopens an
+    API closed by hand.
 - Deadlines are UTC in emails, as `Monday 2 January 2006 at 15:04 MST`. The
   app shows the same format in the phone's time zone.
 
@@ -171,9 +192,11 @@ native Windows make and sh elsewhere. Use Git Bash for POSIX commands.
 
 ```bash
 go build ./... && go vet ./... && go test ./internal/...
-make build          # bin/{http,scheduled,docwatch,alarmpush}/bootstrap (linux/arm64, CGO off, lambda.norpc)
+make build          # bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap (linux/arm64, CGO off, lambda.norpc)
+make lint           # go vet and golangci-lint, as CI
+make dmh            # bin/dmh/dmh(.exe), the CLI for this machine
 make qrcode         # checkin-qr.png; QRFLAGS="-aws -firebase google-services.json" (state is in S3)
-cd terraform && terraform init -backend=false && terraform validate
+make validate       # terraform init -backend=false && terraform validate
 make android-test   # Android JVM unit tests and lint
 make android        # Android release APK (debug-signed locally)
 ```
@@ -311,7 +334,12 @@ Never write them into files in the repository.
 - A flood exhausts the shared throttle and blocks check-ins too. HTTP APIs
   have no WAF or per-key usage plans, and a REST API was declined. The
   `api-rejected-requests` alarm tells the owner, who can check in with
-  `dmh checkin`.
+  `dmh checkin`, and the flood guard closes the API until it clears. The
+  flood still reaches API Gateway. The alarm counts 4xx of any kind, so ten
+  bad requests in 5 minutes close it too. The API reopens 5 to 10 minutes
+  after a flood stops, plus up to one check interval.
+- `dmh api enable` during a flood leaves the API open: the alarm is already
+  in ALARM, and SNS notifies only on a change of state.
 - Overlapping runs, or a send whose record fails, can deliver a document
   twice; a duplicate is preferred to a recipient missing out. A check-in
   can't recall an email already being sent.

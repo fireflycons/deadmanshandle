@@ -58,6 +58,23 @@ variable "firebase_service_account_file" {
   }
 }
 
+variable "api_flood_guard" {
+  description = "Close the check-in API automatically when the api-rejected-requests alarm fires, and reopen it once the alarm clears. dmh api disable and enable work either way."
+  type        = bool
+  default     = true
+}
+
+variable "api_guard_check_minutes" {
+  description = "How often, in minutes, the flood guard checks whether to reopen the API while it has it closed. Only seeds the check rule: after that, change it with dmh api check-interval."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.api_guard_check_minutes >= 1 && var.api_guard_check_minutes <= 1440 && floor(var.api_guard_check_minutes) == var.api_guard_check_minutes
+    error_message = "api_guard_check_minutes must be a whole number from 1 to 1440."
+  }
+}
+
 variable "schedule_expression" {
   description = "EventBridge schedule expression for daily check (cron format)"
   type        = string

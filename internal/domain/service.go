@@ -32,6 +32,11 @@ const (
 	// EmailDeliveryHeld tells the owner that the timeout has passed but the
 	// document changed recently, so it has not been sent yet
 	EmailDeliveryHeld
+	// EmailAPIClosed tells the owner that the flood guard closed the
+	// check-in API
+	EmailAPIClosed
+	// EmailAPIReopened tells the owner that the flood guard reopened it
+	EmailAPIReopened
 )
 
 // emailKindNames are the kinds' names, as pushed to the app
@@ -43,6 +48,10 @@ var emailKindNames = map[EmailKind]string{
 	EmailDeliveryBlocked: "delivery-blocked",
 	EmailDocumentChanged: "document-changed",
 	EmailDeliveryHeld:    "delivery-held",
+	// The same kind, so that the app replaces the closed notice with the
+	// reopened one
+	EmailAPIClosed:   "api",
+	EmailAPIReopened: "api",
 }
 
 // String names the kind, as pushed to the app
@@ -244,6 +253,44 @@ func (s *DeadmansHandleService) DocumentChangedEmail(cfg *config.Config, state *
 		To:      cfg.Owner,
 		Subject: "Deadman's Handle Document Changed",
 		Body:    documentChangedBody(changedAt, state.Timeout, doc.Location, origin),
+	}
+}
+
+// APIClosedEmail tells the owner that the flood guard closed the check-in
+// API. checkMinutes is how often it checks whether the flood has stopped,
+// or zero if not known.
+func (s *DeadmansHandleService) APIClosedEmail(cfg *config.Config, checkMinutes int) EmailAction {
+	var when string
+	switch checkMinutes {
+	case 0:
+		when = "regularly"
+	case 1:
+		when = "every minute"
+	default:
+		when = "every " + strconv.Itoa(checkMinutes) + " minutes"
+	}
+	return EmailAction{
+		Kind:    EmailAPIClosed,
+		To:      cfg.Owner,
+		Subject: "Deadman's Handle Check-in API Closed",
+		Body: "The check-in API was flooded with rejected requests, so it was closed on " +
+			s.now().UTC().Format("Monday 2 January 2006 at 15:04 MST") + ". " +
+			"Every request is now refused, including check-ins from the app.\n\n" +
+			"It is checked " + when + " and reopens once the flood has stopped. " +
+			"Meanwhile, check in with dmh checkin. dmh api enable reopens it now.",
+	}
+}
+
+// APIReopenedEmail tells the owner that the flood guard reopened the
+// check-in API
+func (s *DeadmansHandleService) APIReopenedEmail(cfg *config.Config) EmailAction {
+	return EmailAction{
+		Kind:    EmailAPIReopened,
+		To:      cfg.Owner,
+		Subject: "Deadman's Handle Check-in API Reopened",
+		Body: "The flood of requests has stopped, so the check-in API was reopened on " +
+			s.now().UTC().Format("Monday 2 January 2006 at 15:04 MST") + ". " +
+			"The app can check in again.",
 	}
 }
 

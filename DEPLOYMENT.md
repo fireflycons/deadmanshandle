@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.4.0   # the release you want
+VERSION=v0.5.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.4.0'   # the release you want
+$Version = 'v0.5.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.4.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.5.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,8 +69,8 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.4.0/
-├── app/deadmanshandle-v0.4.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v0.5.0/
+├── app/deadmanshandle-v0.5.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
@@ -244,6 +244,11 @@ Key variables:
   account key, to push the owner's notices to the Android app; empty (the
   default) leaves push off. See
   [Push Notifications](#5-push-notifications-optional)
+- `api_flood_guard`: Close the check-in API automatically in a flood (default
+  `true`); see [Closing the API in a Flood](#closing-the-api-in-a-flood)
+- `api_guard_check_minutes`: How often the flood guard checks whether to
+  reopen the API (default 15, from 1 to 1440). It only seeds the setting:
+  after the first apply, change it with `dmh api check-interval`
 
 ## Deploy Infrastructure
 
@@ -435,7 +440,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.4.0.apk
+adb install -r app/deadmanshandle-v0.5.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is
@@ -630,6 +635,34 @@ app's push token is kept.
 ./dmh/dmh-linux-amd64 checkin
 ```
 
+### Closing the API in a Flood
+
+`dmh api disable` closes the check-in API: it sets the stage's throttle to
+rate 0 and burst 0, so API Gateway refuses every request with HTTP 429
+without invoking the Lambda. Requests still reach API Gateway, but nothing
+gets through, not even with a valid API key. `dmh checkin` still works.
+`dmh api enable` reopens it with the throttle Terraform set, and
+`dmh api status` (or `dmh config show`) says whether it is open.
+
+**The flood guard** does this for you (unless `api_flood_guard = false`).
+When the `api-rejected-requests` alarm fires, the `apiguard` Lambda closes
+the API and emails you (and pushes, with push on) that it has. Requests
+refused while it is closed still count, so the alarm stays in ALARM for as
+long as the flood goes on. Every `api_guard_check_minutes` (15 by default),
+the guard checks the alarm, and once it is back to OK, which takes 5 to 10
+minutes after the flood stops, reopens the API and tells you so.
+
+- `dmh api check-interval <minutes>` changes how often it checks, from 1 to
+  1440 minutes, even while it has the API closed.
+- `dmh api disable` and `dmh api enable` stop the guard's check, so it never
+  reopens an API you closed yourself.
+- `dmh api enable` during a flood leaves the API open: the alarm is already
+  in ALARM, and SNS only notifies on a change of state, so the guard isn't
+  told again until the alarm has cleared and fires once more.
+
+The throttle is changed outside Terraform, so a `terraform apply` while the
+API is closed reopens it; the guard's next check then stops.
+
 ## Cleanup
 
 To remove all infrastructure:
@@ -737,7 +770,11 @@ parameter, then run `terraform apply` so the subscription follows.
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.
   While it lasts, check in with `dmh checkin` (see
-  [Checking in without the API](#checking-in-without-the-api)).
+  [Checking in without the API](#checking-in-without-the-api)). The flood
+  guard, if on, closes the API until the alarm clears (see
+  [Closing the API in a Flood](#closing-the-api-in-a-flood)).
+- `deadmanshandle-apiguard-errors` (with the flood guard on): the guard could
+  not close or reopen the API, or tell you. Check `dmh api status`.
 
 With push notifications on, the `alarmpush` Lambda also pushes each alarm to
 the app, and there are three more alarms:

@@ -66,6 +66,42 @@ type PushSender interface {
 	Push(ctx context.Context, token, kind, title, body string) error
 }
 
+// Throttle is the check-in API stage's default route throttle. Rate and
+// burst 0 refuse every request with 429, without invoking the Lambda.
+type Throttle struct {
+	RateLimit  float64 // requests per second
+	BurstLimit int32
+}
+
+// Closed reports whether the throttle refuses every request
+func (t Throttle) Closed() bool {
+	return t.RateLimit == 0 && t.BurstLimit == 0
+}
+
+// APIGate opens and closes the check-in API through its stage throttle
+type APIGate interface {
+	Throttle(ctx context.Context) (Throttle, error)
+	SetThrottle(ctx context.Context, throttle Throttle) error
+}
+
+// CheckSchedule turns on and off the flood guard's periodic check, which
+// reopens the API once a flood has stopped
+type CheckSchedule interface {
+	Enable(ctx context.Context) error
+	Disable(ctx context.Context) error
+	// Interval returns how often the check runs, in minutes, and whether it
+	// is running
+	Interval(ctx context.Context) (minutes int, enabled bool, err error)
+	// SetInterval changes how often the check runs, leaving it running or
+	// not as it was
+	SetInterval(ctx context.Context, minutes int) error
+}
+
+// AlarmStates reads CloudWatch alarm states
+type AlarmStates interface {
+	InAlarm(ctx context.Context, alarmName string) (bool, error)
+}
+
 // APIKeyValidator defines the interface for validating API keys
 type APIKeyValidator interface {
 	ValidateAPIKey(ctx context.Context, providedKey string, expectedKey string) bool

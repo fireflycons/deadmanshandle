@@ -6,12 +6,15 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/apigatewayv2"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
 	"github.com/fireflycons/deadmanshandle/internal/cli"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 // Compile-time checks that the adapters have what the CLI needs
@@ -78,4 +81,23 @@ func (s *session) documentStore(ctx context.Context) (*adapters.S3DocumentStore,
 		return nil, "", err
 	}
 	return adapters.NewS3DocumentStore(s3.NewFromConfig(s.aws)), bucket, nil
+}
+
+// api returns the check-in API's published stage settings, its gate, and the
+// flood guard's check schedule, which is nil when the guard is off
+func (s *session) api(ctx context.Context) (*cli.APIStage, *adapters.APIGatewayGate, ports.CheckSchedule, error) {
+	value, err := s.lookup(ctx, "api-stage")
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	stage, err := cli.ParseAPIStage([]byte(value))
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("%s: %w", s.parameter("api-stage"), err)
+	}
+	gate := adapters.NewAPIGatewayGate(apigatewayv2.NewFromConfig(s.aws), stage.APIID, stage.Stage)
+	var schedule ports.CheckSchedule
+	if stage.GuardRule != "" {
+		schedule = adapters.NewEventRuleSchedule(eventbridge.NewFromConfig(s.aws), stage.GuardRule)
+	}
+	return stage, gate, schedule, nil
 }

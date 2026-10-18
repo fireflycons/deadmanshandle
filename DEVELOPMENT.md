@@ -91,6 +91,7 @@ CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bo
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/apiguard/bootstrap ./cmd/apiguard
 ```
 
 Terraform deploys these binaries from `bin/`; see
@@ -117,6 +118,12 @@ The release build is signed with the release key when `ANDROID_KEYSTORE_FILE`
 (a PKCS12 keystore), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` are
 set. The key's password is the keystore's. Without them it is debug-signed,
 which is fine for testing but can't update an installed release.
+
+### The dmh CLI
+
+`make dmh` builds the CLI for this machine as `bin/dmh/dmh` (`dmh.exe` on
+Windows). Releases build it for each desktop platform. `go run ./cmd/dmh`
+also works.
 
 ### The Setup QR Code
 
@@ -304,7 +311,14 @@ make test
 go test -v ./...
 
 # With coverage
+make local
 go test -cover ./...
+
+# go vet and golangci-lint, as CI runs them
+make lint
+
+# The Terraform configuration, without the backend
+make validate
 
 # Specific package
 go test -v ./internal/domain

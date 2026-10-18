@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -172,5 +174,24 @@ func TestHTTPHandlerPushToken(t *testing.T) {
 				t.Errorf("Expected a check-in, got CheckIns %d", stateStore.State.CheckIns)
 			}
 		})
+	}
+}
+
+// The push log lines name the kind, as the app sees it, not its number
+func TestPushToOwnerLogsKindName(t *testing.T) {
+	var logs bytes.Buffer
+	defer slog.SetDefault(slog.Default())
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+
+	email := domain.EmailAction{Kind: domain.EmailWarning, Subject: "s", Body: "b"}
+	pushToOwner(context.Background(), mocks.NewMockPushSender(), testPushToken, email)
+	failing := mocks.NewMockPushSender()
+	failing.Err = errors.New("endpoint disabled")
+	pushToOwner(context.Background(), failing, testPushToken, email)
+
+	for _, want := range []string{`"msg":"Push sent","kind":"warning"`, `"msg":"Push failed","kind":"warning"`} {
+		if !strings.Contains(logs.String(), want) {
+			t.Errorf("Expected %s in the logs:\n%s", want, logs.String())
+		}
 	}
 }

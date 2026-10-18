@@ -13,13 +13,17 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
 - **Alarms**: The owner is emailed if the daily run fails or does not run, or if
   the check-in API is flooded
+- **Flood Guard**: A flood closes the check-in API until it stops, so the
+  requests go no further than API Gateway; see
+  [Closing the API in a Flood](DEPLOYMENT.md#closing-the-api-in-a-flood)
 - **Push Notifications** (optional): The owner's notices and the alarms are
   also pushed to the Android app, through SNS and Firebase Cloud Messaging; see
   [Push Notifications](DEPLOYMENT.md#5-push-notifications-optional)
 - **CLI**: `dmh` manages a deployment with your AWS credentials: it checks in
   (`dmh checkin`), shows and changes the settings and state (`dmh config show`,
   `dmh config set`), downloads and replaces the document (`dmh document get`,
-  `dmh document put`) and makes the app's setup QR code (`dmh qr`); see
+  `dmh document put`), closes and reopens the check-in API (`dmh api`) and
+  makes the app's setup QR code (`dmh qr`); see
   [Updating the Configuration](DEPLOYMENT.md#updating-the-configuration)
 
 ## How It Works
