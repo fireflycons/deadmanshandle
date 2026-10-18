@@ -13,9 +13,11 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 - Go module `github.com/fireflycons/deadmanshandle`. Standard library plus the
   AWS SDK only; the one exception is `github.com/skip2/go-qrcode`, used only
   by `cmd/qrconfig`.
-- Three Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`
-  and `cmd/docwatch`. `cmd/qrconfig` is a CLI that writes the app's setup QR
-  code (`make qrcode`; `QRFLAGS=-aws` reads Parameter Store).
+- Four Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
+  `cmd/docwatch` and `cmd/alarmpush` (deployed only with push).
+  `cmd/qrconfig` is a CLI that writes the app's setup QR code
+  (`make qrcode`; `QRFLAGS=-aws` reads Parameter Store, `-firebase` adds the
+  push settings).
 - Hexagonal `internal/`:
   - `domain`: business rules and the clock (injectable).
   - `ports`: interfaces. Ports must not import domain.
@@ -24,16 +26,19 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
     `*domain.DeadmansHandleService` by design; ports are for the AWS side.
   - `mocks`: test doubles, with compile-time interface checks.
   - `config`: the config JSON type and `Config.Validate`.
-  - `qrconfig`: the QR payload, `{"v":1,"endpoint":"https://…","apiKey":"…"}`.
+  - `qrconfig`: the QR payload, `{"v":1,"endpoint":"https://…","apiKey":"…"}`,
+    with an optional `push` object (`projectId`, `appId`, `apiKey`,
+    `senderId`). Older apps ignore it, so it didn't need a new `v`.
 - `android/`: the check-in app. Kotlin, Compose, `minSdk` 30. Its source is
   in `android/app/src/main/java/com/fireflycons/deadmanshandle/`:
   - `config/`: config, Keystore storage, QR payload.
   - `auth/`: BiometricPrompt.
   - `checkin/`: the HTTP request and its result.
+  - `push/`: Firebase setup, the messaging service, notifications.
   - `ui/`: the screens.
 - `terraform/`: AWS (API Gateway HTTP API, EventBridge, SSM, DynamoDB, S3,
-  SES, SNS/CloudWatch alarms). It ships in release tarballs, so it must work
-  for other deployers.
+  SES, SNS/CloudWatch alarms; `push.tf` when push is on). It ships in the
+  release zip, so it must work for other deployers.
 
 ## Runtime behaviour (invariants to preserve)
 
@@ -49,7 +54,7 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   - `/deadmanshandle/api-endpoint` holds the endpoint for `qrconfig -aws`.
 - **State:** one DynamoDB item (`id = "handle"` in `deadmanshandle-state`):
   `timeout`, `checkIns`, `sentTo`, `ownerNotified`, `documentETag`,
-  `documentChangedAt` and `documentChangePending`.
+  `documentChangedAt`, `documentChangePending` and `pushToken`.
   - Every update is a single atomic `UpdateItem`.
   - A check-in is unconditional.
   - Recording a send or the owner notice is conditional on `checkIns` being
@@ -59,6 +64,9 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   `timeout = now + resetDays`, clears the delivery state and increments
   `checkIns`.
   - It returns `newTimeout` in RFC 3339.
+  - An optional body, `{"pushToken": "…"}`, records the token in the same
+    `UpdateItem`. Without one the recorded token is kept; a malformed one is
+    logged and ignored, and the check-in still succeeds.
   - The HTTP Lambda caches the config for 5 minutes.
   - The stage throttle (about 1 request a minute, burst 1) is shared by all
     callers.
@@ -82,6 +90,22 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 - **Delivery hold:** after the timeout, if the document changed less than 24
   hours ago, the owner gets a "delivery held" email instead, and the run
   doesn't error. The hold runs from when the change was found.
+- **Push (optional):** on when Terraform's `firebase_service_account_file` is
+  set, which creates the SNS platform application (FCM HTTP v1) and passes
+  `PUSH_PLATFORM_APPLICATION_ARN` to the Lambdas.
+  - Every owner notice (any `EmailKind` but the document) is pushed to
+    `pushToken` as well as emailed, as an FCM data message
+    `{v, kind, title, body}` with the email's subject and text.
+  - Push is best-effort: it's sent whether or not the email was, and a
+    failure is only logged (counted by the `push-failed` alarm), so it never
+    fails a run or changes the state.
+  - The endpoint is created at send time (`CreatePlatformEndpoint` is
+    idempotent); only the token is stored. SNS authorises
+    `GetEndpointAttributes` against the application's ARN, so the IAM policy
+    grants the actions on the application and its endpoints.
+  - `alarmpush` takes the alarm topic's notifications and pushes those in
+    ALARM. Unlike the notices, it returns a failed push, which raises
+    `alarmpush-errors`.
 - Deadlines are UTC in emails, as `Monday 2 January 2006 at 15:04 MST`. The
   app shows the same format in the phone's time zone.
 
@@ -103,6 +127,22 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   Scanning fills the fields, and Save then prompts.
 - Release builds are minified with R8. `proguard-rules.pro` keeps ML Kit
   whole: without it, creating the scanner crashes in the minified build.
+- Push: Firebase is started at run time (`FirebaseApp.initializeApp` in
+  `DeadmansHandleApp`) from the push settings stored with the config, so the
+  APK holds no `google-services.json` and must not use the Google services
+  plugin. `FirebaseInitProvider` is removed in the manifest.
+  - The push settings are stored in clear. Manual edits keep the scanned
+    ones; a code without them turns push off. Changing or removing them
+    deletes the old token first.
+  - Each check-in sends the current token. The app records the token sent and
+    the latest one from `onNewToken`, and shows "check in to start them" while
+    they differ.
+  - Firebase Messaging 26 deprecates the token API for an opt-in
+    `register()`/`onRegistered`. The token API is kept (with the deprecation
+    suppressed) until SNS is known to accept the new tokens.
+  - Warnings go to the Reminders channel, everything else to the high
+    importance Alerts channel. A notice replaces the last of its kind;
+    different alarms are kept apart.
 - Signing: Gradle uses the release key when `ANDROID_KEYSTORE_FILE`,
   `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` are set (PKCS12, so the
   key's password is the store's), and the debug key otherwise. A
@@ -116,8 +156,8 @@ native Windows make and sh elsewhere. Use Git Bash for POSIX commands.
 
 ```bash
 go build ./... && go vet ./... && go test ./internal/...
-make build          # bin/{http,scheduled,docwatch}/bootstrap (linux/arm64, CGO off, lambda.norpc)
-make qrcode         # checkin-qr.png; QRFLAGS=-aws (needed now that state is in S3)
+make build          # bin/{http,scheduled,docwatch,alarmpush}/bootstrap (linux/arm64, CGO off, lambda.norpc)
+make qrcode         # checkin-qr.png; QRFLAGS="-aws -firebase google-services.json" (state is in S3)
 cd terraform && terraform init -backend=false && terraform validate
 make android-test   # Android JVM unit tests and lint
 make android        # Android release APK (debug-signed locally)
@@ -134,7 +174,9 @@ make android        # Android release APK (debug-signed locally)
   (`make android-test *> <scratchpad>\build.log`), then read the log. Never
   pipe the output, and never run make via `powershell -Command` from Bash:
   the Gradle daemon keeps the handle open, so the call hangs.
-- `AccessDenied` under `android/app/build`: delete the build directories.
+- `AccessDenied`, or "Unable to delete directory" / "Cannot snapshot … not a
+  regular file", under `android/app/build`: OneDrive is holding the files.
+  Delete `android/app/build` and `android/build`, and build again.
 - The local tflint is too old (0.34.1) for `precondition`/`check` blocks; CI's
   v0.64.0 is authoritative.
 
@@ -143,8 +185,9 @@ make android        # Android release APK (debug-signed locally)
 - **Go:** unit tests with the mocks and the real domain service, using the
   standard `testing` package, with tables where useful. There is no local
   Lambda environment.
-- **Android JVM tests** cover the config, the QR payload and the check-in
-  result. Android's `org.json` is a stub on the JVM, so the tests use the real
+- **Android JVM tests** cover the config (including the push settings and
+  token registration), the QR payload, the check-in result and body, and the
+  push message. Android's `org.json` is a stub on the JVM, so the tests use the real
   `org.json` (a `testImplementation`).
 - The Keystore, the prompt, the scanner and HTTP need an emulator. Test the
   **minified release APK** (`make android`, then `adb install -r`), because
@@ -162,6 +205,16 @@ make android        # Android release APK (debug-signed locally)
   - After a cold boot, unlock the device before launching the app.
   - Prefer screenshots to `uiautomator dump`, which can miss text that is on
     screen. In Git Bash, set `MSYS_NO_PATHCONV=1` for `adb shell` paths.
+  - The BiometricPrompt is a secure window, so screenshots of it are black;
+    `uiautomator dump` shows its PIN pad, and `adb shell input text 1234`
+    then Enter answers it. If the screen sleeps, `adb shell svc power stayon
+    true`.
+  - Push needs the Play image and a real Firebase project. Send a test push
+    straight to the token's endpoint (`aws sns create-platform-endpoint`,
+    then `aws sns publish --message-structure json`); it uses your
+    credentials, not the Lambdas' role, so test the role by setting off an
+    alarm (`aws cloudwatch set-alarm-state`). `adb shell dumpsys notification
+    --noredact` lists what was posted.
 - Testing against production changes live state (a check-in resets the
   deadline). A 401 or 429 can set off the `api-rejected-requests` alarm. Ask
   first.
@@ -177,8 +230,10 @@ make android        # Android release APK (debug-signed locally)
   - `CI gate`, the job required by `master`'s ruleset; add new jobs to its
     `needs`
 - **Release** (`release.yml`), on a merge to `master`: it creates
-  `v<VERSION>` with the Lambda zips, the Terraform tarball, the signed
-  `deadmanshandle-v<VERSION>.apk` and `SHA256SUMS`.
+  `v<VERSION>` with `SHA256SUMS` and one zip,
+  `deadmanshandle-v<VERSION>.zip`: Terraform, the example config, the Lambdas
+  in `bin/`, the signed APK in `app/` and `qrconfig` for each desktop
+  platform in `qrconfig/`, laid out ready to deploy.
   - The APK is signed from the repository secrets `ANDROID_KEYSTORE_BASE64`,
     `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, and the release fails
     without them.
@@ -211,6 +266,12 @@ Never write them into files in the repository.
     `terraform init`.
 - The `make build` binaries are what `terraform apply` deploys. Go records
   the commit in each binary, so every rebuild shows as a code change.
+- **Push** is on: `terraform.tfvars` (git-ignored) sets
+  `firebase_service_account_file = "../firebase-service-account.json"`. That
+  key and `google-services.json` are in the repository root, git-ignored. The
+  Firebase project ID is in local memory.
+  - The key is in the Terraform state, and in any saved plan: keep plans out
+    of the repository (`*.tfplan` is ignored).
 
 ## Conventions
 
@@ -246,3 +307,7 @@ Never write them into files in the repository.
 - A config change, including a new `apiKey`, takes up to 5 minutes to reach
   check-ins. Throttling is best-effort.
 - Warnings round the day count down; the exact deadline is always shown.
+- Push goes through Google and carries the email's text. It reaches one
+  phone, the last to check in with a token. A new token isn't registered
+  until the next check-in, and until then pushes fail (the app says so, and
+  `push-failed` fires). Pushes repeat with Lambda's retries, as emails do.

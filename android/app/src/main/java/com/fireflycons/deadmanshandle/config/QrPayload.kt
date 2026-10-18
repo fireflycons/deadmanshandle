@@ -5,7 +5,8 @@ import org.json.JSONObject
 
 /**
  * The text of a setup QR code, as made by the qrconfig CLI
- * (internal/qrconfig): `{"v":1,"endpoint":"https://…","apiKey":"…"}`.
+ * (internal/qrconfig): `{"v":1,"endpoint":"https://…","apiKey":"…"}`, with
+ * an optional "push" object holding the [PushOptions].
  */
 sealed interface QrPayload {
     data class Valid(val config: CheckInConfig) : QrPayload
@@ -16,7 +17,7 @@ sealed interface QrPayload {
     /** A version this app doesn't know, from a newer qrconfig */
     data class UnknownVersion(val version: Int) : QrPayload
 
-    /** A known version, but the endpoint or API key is missing or invalid */
+    /** A known version, but the endpoint, API key or push settings are missing or invalid */
     data object Invalid : QrPayload
 
     companion object {
@@ -37,7 +38,12 @@ sealed interface QrPayload {
             ) {
                 return Invalid
             }
-            return Valid(CheckInConfig(endpoint, apiKey))
+            val push = when (val value = json.opt("push")) {
+                null -> null
+                is JSONObject -> PushOptions.fromJson(value) ?: return Invalid
+                else -> return Invalid
+            }
+            return Valid(CheckInConfig(endpoint, apiKey, push))
         }
     }
 }

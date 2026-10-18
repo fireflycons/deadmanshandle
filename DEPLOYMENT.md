@@ -2,19 +2,22 @@
 
 You don't need to build anything to deploy. Each
 [release](https://github.com/fireflycons/deadmanshandle/releases) has the
-pre-built Lambda binaries, the Terraform configuration, the example configs
-and (from v0.2.0) the Android check-in app; see
+pre-built Lambda binaries, the Terraform configuration, the example config
+and the Android check-in app, in a single zip; see
 [Deploying from a Release](#deploying-from-a-release). To build
 from source instead, clone the repository and see
-[Build the Application](#build-the-application).
+[DEVELOPMENT.md](DEVELOPMENT.md#building), then follow this guide from
+[Pre-deployment Setup](#pre-deployment-setup).
 
 ## Prerequisites
 
 1. **AWS Account**: With permissions for Lambda, API Gateway, S3, Parameter Store, DynamoDB, SES, EventBridge, SQS, SNS, CloudWatch, IAM and (for the DKIM records) Route 53
 2. **Terraform 1.5+**: For infrastructure deployment
 3. **AWS CLI**: Configured with credentials
-4. **Go 1.26+** (see `go.mod`): Only to build from source
-5. **Make**: Only to build from source (optional but recommended)
+4. **Go 1.26+** (see `go.mod`) and **Make**: Only to build from source
+   (see [DEVELOPMENT.md](DEVELOPMENT.md))
+5. **A Firebase project** (free): Only for push notifications to the Android
+   app; see [Push Notifications](#5-push-notifications-optional)
 
 ## Deploying from a Release
 
@@ -22,82 +25,69 @@ from source instead, clone the repository and see
 
 Pick a version from the
 [releases page](https://github.com/fireflycons/deadmanshandle/releases) and
-download its files: `deadmanshandle-terraform-<version>.tar.gz` (the Terraform
-configuration, example configs and licence), `http.zip`, `scheduled.zip` and
-`docwatch.zip` (the Lambdas, built for linux/arm64),
-`deadmanshandle-<version>.apk` (the Android app; see
-[Setting Up the Android App](#setting-up-the-android-app)) and `SHA256SUMS`.
+download its two files: `deadmanshandle-<version>.zip`, which holds
+everything, and `SHA256SUMS`. (Releases before v0.3.0 have separate files;
+follow the DEPLOYMENT.md linked from their notes.)
 
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.2.0   # the release you want
+VERSION=v0.3.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
-mkdir deadmanshandle-download && cd deadmanshandle-download
-for f in "deadmanshandle-terraform-$VERSION.tar.gz" http.zip scheduled.zip docwatch.zip "deadmanshandle-$VERSION.apk" SHA256SUMS; do
-  curl -fsSLO "$BASE/$f"
-done
+curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
+curl -fsSLO "$BASE/SHA256SUMS"
 sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 ```
 
 PowerShell:
 
 ```powershell
-$Version = 'v0.2.0'   # the release you want
+$Version = 'v0.3.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
-New-Item -ItemType Directory deadmanshandle-download | Set-Location
-foreach ($f in "deadmanshandle-terraform-$Version.tar.gz", 'http.zip', 'scheduled.zip', 'docwatch.zip', "deadmanshandle-$Version.apk", 'SHA256SUMS') {
-    Invoke-WebRequest "$Base/$f" -OutFile $f
-}
-Get-Content SHA256SUMS | ForEach-Object {
-    $hash, $file = $_ -split '\s+', 2
-    if ((Get-FileHash $file.TrimStart('*') -Algorithm SHA256).Hash -ne $hash) { throw "Checksum mismatch: $file" }
-}
+Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
+Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
+$hash = (-split (Get-Content SHA256SUMS))[0]
+if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.2.0 -R fireflycons/deadmanshandle`
-downloads them all.
+With the GitHub CLI, `gh release download v0.3.0 -R fireflycons/deadmanshandle`
+downloads both.
 
-### 2. Unpack
-
-The tarball unpacks into `deadmanshandle-<version>/`, laid out like the
-repository. Unzip each Lambda into its `bin/` directory there, where Terraform
-expects it:
+### 2. Unzip
 
 ```bash
-tar -xzf "deadmanshandle-terraform-$VERSION.tar.gz"
+unzip -q "deadmanshandle-$VERSION.zip"
 cd "deadmanshandle-$VERSION"
-for fn in http scheduled docwatch; do
-  mkdir -p "bin/$fn" && unzip -q "../$fn.zip" -d "bin/$fn"
-done
 ```
 
 ```powershell
-tar -xzf "deadmanshandle-terraform-$Version.tar.gz"
+Expand-Archive "deadmanshandle-$Version.zip" -DestinationPath .
 Set-Location "deadmanshandle-$Version"
-foreach ($fn in 'http', 'scheduled', 'docwatch') { Expand-Archive "..\$fn.zip" -DestinationPath "bin\$fn" }
 ```
 
-The result:
+The result is laid out like the repository, with the Lambdas already where
+Terraform expects them:
 
 ```
-deadmanshandle-v0.1.0/
-├── bin/{http,scheduled,docwatch}/bootstrap
+deadmanshandle-v0.3.0/
+├── app/deadmanshandle-v0.3.0.apk     # the Android app; see Setting Up the Android App
+├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
+├── qrconfig/                         # makes the app's setup QR code, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
 ```
 
-On Windows the `bootstrap` files lose their executable bit; that doesn't
-matter, because Terraform sets it when it zips them for Lambda.
+`alarmpush` is deployed only with push notifications. On Windows the
+`bootstrap` files lose their executable bit; that doesn't matter, because
+Terraform sets it when it zips them for Lambda.
 
 ### 3. Configure and Deploy
 
 Follow [Pre-deployment Setup](#pre-deployment-setup) and
 [Deploy Infrastructure](#deploy-infrastructure) below, working in
 `deadmanshandle-<version>/`: `config.json` goes next to `terraform/`, and you
-run Terraform from `terraform/`. Skip
-[Build the Application](#build-the-application).
+run Terraform from `terraform/`.
 
 ### Upgrading to a Later Release
 
@@ -105,9 +95,10 @@ Terraform keeps its state in `terraform/terraform.tfstate`, in the directory
 you deployed from. Keep that directory, and back the state file up: without
 it, Terraform can't update or destroy what it created.
 
-To upgrade, download and unpack the new release as above, then copy across
+To upgrade, download and unzip the new release as above, then copy across
 your `config.json`, `terraform/terraform.tfvars` and
-`terraform/terraform.tfstate` from the old directory, and run
+`terraform/terraform.tfstate` (and the Firebase key, if you use push) from the
+old directory, and run
 `terraform init`, `terraform plan` and `terraform apply` from the new
 `terraform/`. The plan shows the Lambdas updating; the configuration and the
 countdown are not reset (see
@@ -228,21 +219,10 @@ Key variables:
 - `document_versioning`: Versioning on the document bucket (default `false`).
   When `true`, old versions are deleted 30 days after being replaced or
   deleted. Setting it back to `false` suspends versioning
-
-## Build the Application
-
-Only when building from source; skip this if you deployed from a release.
-
-```bash
-# Build the Lambda binaries
-make build
-
-# Or manually:
-mkdir -p bin/http bin/scheduled bin/docwatch
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
-```
+- `firebase_service_account_file`: Path to the Firebase project's service
+  account key, to push the owner's notices to the Android app; empty (the
+  default) leaves push off. See
+  [Push Notifications](#5-push-notifications-optional)
 
 ## Deploy Infrastructure
 
@@ -273,6 +253,9 @@ Review the plan to ensure it will create the expected resources:
 - The domain's DMARC record, if `dmarc_record` is set
 - SNS topic, owner email subscription and CloudWatch alarms
 - IAM role and policies
+- With `firebase_service_account_file` set: the SNS platform application for
+  push, the `alarmpush` Lambda subscribed to the alarm topic, and the push
+  alarms
 
 The plan fails if the config file breaks the rules above, and warns if its
 `timeout` is not in the future.
@@ -293,6 +276,8 @@ This will create all resources and output:
 - `eventbridge_rule_name`: EventBridge rule name
 - `alarm_topic_arn`: SNS topic for alarms
 - `ses_dkim_dns_records`: DKIM records for the sender domain
+- `push_platform_application_arn`, `alarmpush_lambda_function_name`: the push
+  resources (null when push is off)
 
 The owner then receives an email asking them to confirm the alarm subscription.
 
@@ -312,14 +297,8 @@ The API is throttled to about one request a minute, shared by all callers, not
 per client. API Gateway throttles on a best-effort basis, so rapid calls are
 mostly, but not always, rejected with HTTP 429.
 
-Expected response:
-```json
-{
-    "statusCode": 200,
-    "message": "Check-in successful",
-    "newTimeout": "2024-07-15T12:00:00Z"
-}
-```
+The response holds the new deadline; see
+[API Usage](README.md#check-in-endpoint) for its format.
 
 ### 2. Upload Document to S3
 
@@ -394,37 +373,80 @@ the key. `curl`, as above, works too.
 
 ### 1. Install the App
 
-Each release from v0.2.0 has the app as `deadmanshandle-<version>.apk`, signed
-with the project's release key. It isn't in Google Play: download it on the
-phone and open it, allowing your browser or file manager to install unknown
-apps when Android asks. To update, install a later release's APK over it; the
-config is kept.
+The app isn't in Google Play, so you install (sideload) the APK from the
+release: `app/deadmanshandle-<version>.apk` in the unzipped release. It is
+signed with the project's release key.
+
+**From the phone's files:**
+
+1. Copy the APK to the phone: over a USB cable (choose "File transfer" on the
+   phone, then copy it into the phone's `Download` folder), or through a cloud
+   drive such as Google Drive, or by emailing it to yourself.
+2. On the phone, open the APK from the Files app (Downloads), the Drive app or
+   the email.
+3. Android says that app isn't allowed to install unknown apps. Tap
+   **Settings**, turn on **Allow from this source**, and go back.
+4. Tap **Install**. If Google Play Protect warns about an unknown app, tap
+   **More details**, then **Install anyway** (the wording varies by phone).
+5. Optionally, turn **Allow from this source** off again: Settings > Apps >
+   Special app access > Install unknown apps, then the app you installed from.
+
+**Or with adb**, from a computer with the Android SDK platform tools: on the
+phone, turn on Developer options (tap Settings > About phone > Build number
+seven times), then USB debugging in them, connect the cable and accept the
+prompt on the phone. Then, in the unzipped release:
+
+```bash
+adb install -r app/deadmanshandle-v0.3.0.apk
+```
+
+**To update**, install a later release's APK the same way; the config is
+kept. Every release is signed with the same key, so it installs over the last
+one. A build signed with another key can't: Android refuses it rather than
+replace the app, and uninstalling erases the app's config.
 
 ### 2. Make the Setup QR Code
 
-`make qrcode` writes `checkin-qr.png`, a QR code holding the API endpoint and
-the API key. It needs a clone of the repository and Go. By default it reads the
-endpoint from `terraform/terraform.tfstate` and the key from `config.json`:
+The release's `qrconfig` tool writes `checkin-qr.png`, a QR code holding the
+API endpoint and the API key, and with `-firebase` the push settings (see
+[Push Notifications](#5-push-notifications-optional)). It is in `qrconfig/`,
+built for each platform: pick the one for your computer.
+
+| Computer | Program |
+| --- | --- |
+| Windows (most PCs) | `qrconfig-windows-amd64.exe` |
+| Windows on Arm | `qrconfig-windows-arm64.exe` |
+| Mac with Apple silicon (M1 or later) | `qrconfig-darwin-arm64` |
+| Mac with an Intel processor | `qrconfig-darwin-amd64` |
+| Linux | `qrconfig-linux-amd64`, or `qrconfig-linux-arm64` on Arm |
+
+Run it from `deadmanshandle-<version>/`, where you deployed from. By default
+it reads the endpoint from `terraform/terraform.tfstate` and the key from
+`config.json`:
 
 ```bash
-make qrcode
+./qrconfig/qrconfig-linux-amd64
+```
+
+```powershell
+.\qrconfig\qrconfig-windows-amd64.exe
 ```
 
 To read the values the Lambdas use from Parameter Store instead, with the AWS
-credentials in the environment (for example after changing the `apiKey`):
+credentials in the environment (for example after changing the `apiKey`), add
+`-aws`. This works from any directory.
 
-```bash
-make qrcode QRFLAGS=-aws
-```
+`-out` and `-size` set the file and its width in pixels (default 1024),
+`-app` the Terraform `application_name` if it isn't `deadmanshandle`, and
+`-firebase` the Firebase project's `google-services.json`, for push. `-help`
+lists them.
 
-Without a clone, Go can run it straight from the module:
+The programs aren't signed. On a Mac, if it says the program can't be opened,
+run `xattr -d com.apple.quarantine qrconfig/qrconfig-darwin-*` once. If
+Windows blocks it, run `Unblock-File .\qrconfig\*.exe` in PowerShell.
 
-```bash
-go run github.com/fireflycons/deadmanshandle/cmd/qrconfig@latest -aws
-```
-
-`-out` and `-size` set the file and its width in pixels (default 1024), and
-`-app` the Terraform `application_name` if it isn't `deadmanshandle`.
+From a clone of the repository, `make qrcode` runs it instead (add the flags
+with `QRFLAGS=`); see [DEVELOPMENT.md](DEVELOPMENT.md#the-setup-qr-code).
 
 **The PNG holds the API key.** Show it on a screen rather than printing it, and
 delete it once the app has scanned it. Git ignores `checkin-qr.png`.
@@ -433,13 +455,69 @@ delete it once the app has scanned it. Git ignores `checkin-qr.png`.
 
 Open the app and either tap **Scan QR code** and scan the code, or enter the
 endpoint (`terraform output -raw api_endpoint`) and the API key by hand. Tap
-**Save** and confirm with your fingerprint or screen lock.
+**Save** and confirm with your fingerprint or screen lock. If the code has
+push settings, the app then asks to show notifications.
 
 ### 4. Check In
 
 Tap **Check in** and confirm with your fingerprint or screen lock. The app
 shows the new deadline in the phone's time zone, or why the check-in failed.
 The API allows about one request a minute.
+
+### 5. Push Notifications (Optional)
+
+The app can also receive the owner's notices as push notifications: the
+warnings to check in, the missing document, delivery held or blocked, the
+document changed, the handle triggered, and the CloudWatch alarms. Email stays
+the record. A push is sent whether or not the email was, and a failed push
+never fails a run. Pushes go through SNS mobile push to Firebase Cloud
+Messaging (FCM). Each deployment uses its own Firebase project, so the
+released app works with any deployment.
+
+1. **Create a Firebase project.** In the
+   [Firebase console](https://console.firebase.google.com), create a project
+   (Google Analytics isn't needed) and add an **Android** app with the package
+   name `com.fireflycons.deadmanshandle`. Download its `google-services.json`.
+   Skip the remaining "add the Firebase SDK" steps: the app is already built,
+   and gets the settings from the setup QR code instead of the Gradle plugin.
+   Under **Project settings > Cloud Messaging**, check that the Firebase Cloud
+   Messaging API (V1) is enabled.
+2. **Download the server key.** Under **Project settings > Service accounts**,
+   choose **Generate new private key**. **The key is a secret**: anyone with
+   it can push to the app. Keep it, and `google-services.json`, in the top
+   directory, as `firebase-service-account.json`; git ignores both names. The
+   key is also kept in the Terraform state.
+3. **Turn push on.** Set `firebase_service_account_file =
+   "../firebase-service-account.json"` in `terraform.tfvars`, then run
+   `terraform plan` and `terraform apply`.
+4. **Make a QR code with the push settings**, adding `-firebase`:
+
+   ```bash
+   ./qrconfig/qrconfig-linux-amd64 -aws -firebase google-services.json
+   ```
+
+   with the program for your computer (see
+   [Make the Setup QR Code](#2-make-the-setup-qr-code)).
+
+5. **In the app**, tap **Change config**, scan the new code, tap **Save** and
+   allow notifications. Then check in: each check-in sends the phone's push
+   token, and the app shows "Notifications: on".
+
+Good to know about push:
+
+- **One phone**: pushes go to the last phone that checked in with push set up.
+  Check-ins with `curl` don't change it.
+- **New tokens**: Google can give the app a new token, for example after
+  reinstalling or clearing its data. The app then shows "Notifications: check
+  in to start them" until the next check-in sends it; meanwhile pushes fail,
+  which raises the `push-failed` alarm.
+- **Channels**: warnings go to the **Reminders** channel, and everything else
+  to **Alerts**, which makes a sound. Change them in the app's notification
+  settings.
+- **Privacy**: a push carries the same text as the email (the recipients'
+  addresses, the document's location), through Google.
+- **Turning push off**: scan a code made without `-firebase`, or remove the
+  variable and run `terraform apply`.
 
 ### Good to Know
 
@@ -501,18 +579,6 @@ aws dynamodb update-item \
   --expression-attribute-values "{\":t\":{\"S\":\"$TIMEOUT\"},\":one\":{\"N\":\"1\"}}"
 ```
 
-## Testing
-
-Run tests before deployment:
-
-```bash
-# Run all tests
-make test
-
-# Or manually:
-go test -v ./...
-```
-
 ## Cleanup
 
 To remove all infrastructure:
@@ -546,6 +612,14 @@ Common issues:
 - SES sender domain not verified
 - S3 document not found
 
+### Check-in Rejected
+
+- HTTP 401 `Missing API key` or `Invalid API key`: send the config's `apiKey`
+  in the `x-api-key` header. A new key can take 5 minutes to work.
+- HTTP 500 `Failed to retrieve configuration` or `Failed to parse
+  configuration`: the HTTP Lambda's logs give the cause. Check the parameter
+  exists and follows the rules under "Create Configuration File".
+
 ### Permission Denied Errors
 
 Verify IAM role policies:
@@ -569,6 +643,17 @@ aws iam get-role-policy --role-name deadmanshandle-lambda-role \
 1. Verify rule is enabled: `aws events describe-rule --name deadmanshandle-daily-check`
 2. Check Lambda permission: `aws lambda list-permissions --function-name deadmanshandle-scheduled`
 3. Check the DLQ (`deadmanshandle-dlq`) and the `scheduled-not-run` alarm
+
+### Push Notifications Not Arriving
+
+1. The app should show "Notifications: on". If it asks you to check in, do;
+   if notifications are blocked, allow them in its notification settings.
+2. Search the scheduled and docwatch Lambdas' logs for `Push failed`, and the
+   `alarmpush` Lambda's for `Alarm push failed`. "push token no longer valid"
+   means Google dropped the token: check in from the app.
+3. Check the platform application:
+   `aws sns get-platform-application-attributes --platform-application-arn "$(terraform output -raw push_platform_application_arn)"`
+   should show `"Enabled": "true"`.
 
 ## Monitoring
 
@@ -603,16 +688,26 @@ parameter, then run `terraform apply` so the subscription follows.
   While it lasts, check in with the AWS CLI (see
   [Checking in without the API](#checking-in-without-the-api)).
 
+With push notifications on, the `alarmpush` Lambda also pushes each alarm to
+the app, and there are three more alarms:
+
+- `deadmanshandle-push-failed`: a notice could not be pushed (it was still
+  emailed), most likely because the push token is no longer valid.
+- `deadmanshandle-push-delivery-failed`: FCM refused a push that SNS sent.
+- `deadmanshandle-alarmpush-errors`: an alarm could not be pushed.
+
 ## Cost Estimation
 
 Usage is tiny (one scheduled run a day, occasional check-ins, a handful of
 emails), so most services cost nothing or fractions of a cent. The fixed costs
 are:
 
-- CloudWatch alarms: about $0.10 per alarm per month (4 alarms)
+- CloudWatch alarms: about $0.10 per alarm per month (5 alarms, 8 with push)
 - Route 53: the hosted zone's own charge, if it is not already paid for
 
 Lambda, API Gateway, S3, Parameter Store (standard parameter), DynamoDB
 (on-demand, plus point-in-time recovery for one tiny item), SQS, SNS email
-and SES (about $0.10 per 1,000 emails) are negligible at this volume. Expect
+and mobile push (the first million pushes a month are free), and SES (about
+$0.10 per 1,000 emails) are negligible at this volume. Firebase Cloud
+Messaging is free. Expect
 well under $1 a month; check current AWS pricing for your region.

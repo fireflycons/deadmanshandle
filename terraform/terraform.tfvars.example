@@ -6,6 +6,7 @@ manage_dkim_dns_records = true # false if that domain's DNS is not in Route 53 i
 dmarc_record = "" # e.g. "v=DMARC1; p=none; rua=mailto:dmarc@example.com" to create the domain's DMARC record in Route 53
 document_versioning = false # true to version the document bucket; old versions are kept for 30 days
 schedule_expression = "cron(0 2 * * ? *)" # 2 AM UTC daily
+# firebase_service_account_file = "../firebase-service-account.json" # the Firebase project's service account key, to push notices to the app
 
 tags = {
   Application = "deadmanshandle"

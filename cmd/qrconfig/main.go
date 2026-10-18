@@ -1,7 +1,9 @@
 // Command qrconfig writes a PNG QR code that sets up the Android check-in
 // app. By default it reads the API endpoint from the Terraform state and the
 // API key from the config file. With -aws it reads the active values from
-// Parameter Store instead, using the credentials in the environment.
+// Parameter Store instead, using the credentials in the environment. With
+// -firebase it adds the Firebase project's client settings, from its
+// google-services.json, so the app can receive push notifications.
 package main
 
 import (
@@ -23,6 +25,7 @@ func main() {
 	configPath := flag.String("config", "config.json", "config file holding the apiKey (not with -aws)")
 	fromAWS := flag.Bool("aws", false, "read the endpoint and API key from Parameter Store")
 	app := flag.String("app", "deadmanshandle", "Terraform application_name, which prefixes the parameter names (with -aws only)")
+	firebase := flag.String("firebase", "", "the Firebase project's google-services.json, to turn on push notifications")
 	outPath := flag.String("out", "checkin-qr.png", "PNG file to write")
 	size := flag.Int("size", 1024, "width and height of the PNG in pixels")
 	flag.Parse()
@@ -42,8 +45,12 @@ func main() {
 	default:
 		endpoint, apiKey, err = readFiles(*statePath, *configPath)
 	}
+	var push *qrconfig.Push
+	if err == nil && *firebase != "" {
+		push, err = readFirebase(*firebase)
+	}
 	if err == nil {
-		err = write(endpoint, apiKey, *outPath, *size)
+		err = write(endpoint, apiKey, push, *outPath, *size)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "qrconfig:", err)
@@ -103,8 +110,20 @@ func readAWS(ctx context.Context, app string) (endpoint, apiKey string, err erro
 	return endpoint, apiKey, nil
 }
 
-func write(endpoint, apiKey, outPath string, size int) error {
-	payload, err := qrconfig.Encode(endpoint, apiKey)
+func readFirebase(path string) (*qrconfig.Push, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	push, err := qrconfig.PushFromGoogleServices(data)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
+	}
+	return push, nil
+}
+
+func write(endpoint, apiKey string, push *qrconfig.Push, outPath string, size int) error {
+	payload, err := qrconfig.Encode(endpoint, apiKey, push)
 	if err != nil {
 		return err
 	}
@@ -118,6 +137,11 @@ func write(endpoint, apiKey, outPath string, size int) error {
 	}
 
 	fmt.Printf("Wrote %s for %s\n", outPath, endpoint)
+	if push != nil {
+		fmt.Printf("Push notifications: Firebase project %s\n", push.ProjectID)
+	} else {
+		fmt.Println("Push notifications: off (no -firebase)")
+	}
 	fmt.Println("It contains the API key: delete it once the app has scanned it.")
 	return nil
 }

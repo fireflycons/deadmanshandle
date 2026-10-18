@@ -36,8 +36,8 @@ func newScheduledTest(t *testing.T, cfg *config.Config, state config.State) (*Sc
 
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
-	watcher := NewDocumentWatcher(stateStore, emailSender, service)
-	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, service, watcher, testParam, testBucket, testKey)
+	watcher := NewDocumentWatcher(stateStore, emailSender, nil, service)
+	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, nil, service, watcher, testParam, testBucket, testKey)
 
 	return handler, stateStore, emailSender
 }
@@ -157,7 +157,7 @@ func TestScheduledHandlerStopsAfterConcurrentCheckIn(t *testing.T) {
 	newTimeout := testNow.AddDate(0, 0, 30)
 	stateStore.BeforeUpdate = func() {
 		if stateStore.State.CheckIns == 0 && len(emailSender.SentEmails) == 1 {
-			_ = stateStore.CheckIn(context.Background(), newTimeout)
+			_ = stateStore.CheckIn(context.Background(), newTimeout, "")
 		}
 	}
 

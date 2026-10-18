@@ -21,6 +21,8 @@ local.properties
 # Terraform
 *.tfstate
 *.tfstate.*
+# Saved plans can hold secrets, such as the Firebase key
+*.tfplan
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
@@ -48,6 +50,10 @@ config.json
 
 # QR code holding the API key (make qrcode)
 checkin-qr.png
+
+# Firebase: the service account key (a secret) and the client settings
+firebase*.json
+google-services.json
 
 # Logs
 logs/

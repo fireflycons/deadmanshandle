@@ -59,6 +59,56 @@ class ConfigStoreTest {
     }
 
     @Test
+    fun pushOptions() {
+        val prefs = FakeSharedPreferences()
+        val push = PushOptions("proj", "1:42:android:ab", "AIza", "42")
+        ConfigStore(prefs).save(config.copy(push = push), encryptCipher(key))
+
+        // Readable without authenticating, and loaded with the config
+        val store = ConfigStore(prefs)
+        assertEquals(push, store.pushOptions)
+        assertEquals(config.copy(push = push), store.load(decryptCipher(key, store.sealedApiKey!!)))
+
+        // Saving a config without push removes them
+        store.save(config, encryptCipher(key))
+        assertNull(store.pushOptions)
+        assertEquals(config, store.load(decryptCipher(key, store.sealedApiKey!!)))
+    }
+
+    @Test
+    fun pushRegistration() {
+        val store = ConfigStore(FakeSharedPreferences())
+        val withPush = config.copy(push = PushOptions("proj", "1:42:android:ab", "AIza", "42"))
+        store.save(withPush, encryptCipher(key))
+        assertFalse(store.isPushRegistered)
+
+        // A token from before the first check-in
+        store.noteNewPushToken("t1")
+        assertFalse(store.isPushRegistered)
+
+        store.markPushRegistered("t1")
+        assertTrue(store.isPushRegistered)
+        // Reported again after the check-in sent it
+        store.noteNewPushToken("t1")
+        assertTrue(store.isPushRegistered)
+
+        // A new token needs a check-in to send it
+        store.noteNewPushToken("t2")
+        assertFalse(store.isPushRegistered)
+        store.markPushRegistered("t2")
+        assertTrue(store.isPushRegistered)
+
+        // A new config needs a new registration
+        store.save(withPush, encryptCipher(key))
+        assertFalse(store.isPushRegistered)
+
+        // Without push there is nothing to register
+        store.save(config, encryptCipher(key))
+        store.markPushRegistered("t3")
+        assertFalse(store.isPushRegistered)
+    }
+
+    @Test
     fun partialConfigIsNotConfigured() {
         val prefs = FakeSharedPreferences()
         ConfigStore(prefs).save(config, encryptCipher(key))

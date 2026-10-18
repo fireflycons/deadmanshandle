@@ -1,5 +1,48 @@
 # Project Structure
 
+## Architecture
+
+![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, alarms to the owner, and optional push notifications to the app through SNS and Firebase Cloud Messaging](docs/architecture.png)
+
+The diagram is drawn by `tools/architecture_diagram.py`; see
+[DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
+
+### AWS Services Used
+
+- **AWS Lambda**: Compute (3 functions, 4 with push)
+- **API Gateway**: HTTP endpoint for check-ins
+- **EventBridge**: Scheduled daily checks, and S3 upload events
+- **Parameter Store**: Configuration storage
+- **DynamoDB**: Timeout and delivery state
+- **S3**: Document storage
+- **SES**: Email delivery
+- **CloudWatch**: Logs (14-day retention) and alarms
+- **SNS**: Alarm emails to the owner, and push notifications to the app
+  through Firebase Cloud Messaging
+
+### Configuration and State
+
+The configuration is stored in Parameter Store as JSON (see
+[DEPLOYMENT.md](DEPLOYMENT.md#2-create-configuration-file)). The Lambdas only
+read it.
+
+What changes at run time is kept in one item of a DynamoDB table
+(`deadmanshandle-state`), whose updates are atomic, so Lambdas running at the
+same time cannot undo each other's writes:
+
+- `timeout`: seeded from the config file, then set by each check-in
+- `checkIns`: counts check-ins
+- `sentTo`: recipients who have already been sent the document
+- `ownerNotified`: whether the owner has been told that it was sent
+- `documentETag`: the document's ETag when last seen
+- `documentChangedAt`, `documentChangePending`: when its content last changed,
+  and whether the owner has yet to be told
+- `pushToken`: the app's push token, sent with its last check-in
+
+A check-in clears `sentTo` and `ownerNotified`.
+
+## Layout
+
 ```
 deadmanshandle/
 │
@@ -10,6 +53,8 @@ deadmanshandle/
 │   │   └── main.go                       # EventBridge scheduled handler
 │   ├── docwatch/
 │   │   └── main.go                       # S3 upload (EventBridge) handler
+│   ├── alarmpush/
+│   │   └── main.go                       # Alarm topic (SNS) handler: pushes alarms
 │   └── qrconfig/
 │       └── main.go                       # CLI: QR code that sets up the Android app
 │
@@ -23,6 +68,8 @@ deadmanshandle/
 │   │   ├── s3_document_store.go          # S3 storage adapter
 │   │   ├── ses_email_sender.go           # SES email adapter (builds the MIME message)
 │   │   ├── ses_email_sender_test.go      # MIME message tests
+│   │   ├── sns_push_sender.go            # SNS mobile push adapter (FCM)
+│   │   ├── sns_push_sender_test.go       # Push message tests
 │   │   └── api_key_validator.go          # API key validation
 │   │
 │   ├── config/                           # Configuration model
@@ -34,10 +81,14 @@ deadmanshandle/
 │   │   └── service_test.go               # Domain logic tests
 │   │
 │   ├── handlers/                         # Lambda handlers
+│   │   ├── alarm_push.go                 # Alarm push handler
+│   │   ├── alarm_push_test.go            # Alarm push tests
 │   │   ├── document_watch.go             # Document change check and upload handler
 │   │   ├── document_watch_test.go        # Document change tests
 │   │   ├── http_handler.go               # HTTP API handler
 │   │   ├── http_handler_test.go          # HTTP handler tests
+│   │   ├── push.go                       # Pushes owner notices, best-effort
+│   │   ├── push_test.go                  # Push and push token tests
 │   │   ├── scheduled_event_handler.go    # EventBridge handler
 │   │   └── scheduled_event_handler_test.go  # Scheduled handler tests
 │   │
@@ -58,10 +109,12 @@ deadmanshandle/
 │   │   └── src/
 │   │       ├── main/                     # Manifest, resources and Kotlin source
 │   │       │   └── java/com/fireflycons/deadmanshandle/
+│   │       │       ├── DeadmansHandleApp.kt  # Starts Firebase from the saved push settings
 │   │       │       ├── MainActivity.kt   # Wires the screens to storage, prompt and API
 │   │       │       ├── auth/             # BiometricPrompt: fingerprint or screen lock
 │   │       │       ├── checkin/          # Check-in request and its result
 │   │       │       ├── config/           # Config, Keystore storage, QR payload
+│   │       │       ├── push/             # Firebase, push messages and notifications
 │   │       │       └── ui/               # Compose screens
 │   │       └── test/                     # JVM unit tests
 │   ├── gradle/                           # Version catalogue, wrapper, daemon JDK
@@ -82,6 +135,7 @@ deadmanshandle/
 │   ├── eventbridge.tf                    # EventBridge rules and DLQ
 │   ├── ses.tf                            # SES domain identity and DKIM records
 │   ├── alarms.tf                         # SNS topic and CloudWatch alarms
+│   ├── push.tf                           # Push to the app (optional): SNS, alarmpush, alarms
 │   ├── outputs.tf                        # Output values
 │   ├── terraform.tfvars.example          # Example variables file
 │   ├── .tflint.hcl                       # TFLint rules (AWS ruleset)
@@ -90,7 +144,8 @@ deadmanshandle/
 ├── bin/                                  # Compiled binaries (generated)
 │   ├── http/bootstrap                    # HTTP handler binary
 │   ├── scheduled/bootstrap               # Scheduled handler binary
-│   └── docwatch/bootstrap                # Document watch handler binary
+│   ├── docwatch/bootstrap                # Document watch handler binary
+│   └── alarmpush/bootstrap               # Alarm push handler binary
 │
 ├── docs/
 │   └── architecture.png                  # AWS architecture diagram
@@ -136,10 +191,16 @@ deadmanshandle/
 - **docwatch**: S3 upload (EventBridge) handler
   - Reports changes to the document's content to the owner
 
+- **alarmpush**: Alarm topic (SNS) handler, deployed only with push
+  - Pushes each CloudWatch alarm to the app
+
 - **qrconfig**: Command-line tool, not a Lambda
-  - Writes a PNG QR code that sets up the Android app (`make qrcode`)
+  - Writes a PNG QR code that sets up the Android app (`make qrcode`); each
+    release includes it for Windows, macOS and Linux
   - Reads the endpoint from the Terraform state and the API key from the
     config file, or both from Parameter Store with `-aws`
+  - Adds the push settings from a Firebase `google-services.json` with
+    `-firebase`
 
 Each `main.go` sets up JSON logging, creates the AWS clients and adapters once
 at init, and starts the Lambda runtime.
@@ -155,6 +216,8 @@ Implements the port interfaces using AWS SDK:
   Lambdas cannot lose each other's writes
 - **S3DocumentStore**: Retrieves documents from S3
 - **SESEmailSender**: Sends emails via SES, with the document as an attachment
+- **SNSPushSender**: Pushes to the app through an SNS platform application for
+  FCM, creating the token's endpoint on demand
 - **SimpleAPIKeyValidator**: Validates API keys with constant-time comparison
 
 ### `internal/config/` - Configuration Model
@@ -189,6 +252,11 @@ Implements the port interfaces using AWS SDK:
   conditional swap, and email the owner of a change, retrying a notice that
   failed
 
+- Owner notices are also pushed to the app's recorded token, whether or not
+  the email was sent; a failed push is logged, never returned
+
+- **AlarmPushHandler**: Pushes a CloudWatch alarm from the alarm topic
+
 ### `internal/mocks/` - Testing Mocks
 Mock implementations of all port interfaces for unit testing:
 - **MockConfigStore**: In-memory configuration storage, with injectable errors
@@ -196,6 +264,7 @@ Mock implementations of all port interfaces for unit testing:
   and a hook to simulate a concurrent writer
 - **MockDocumentStore**: In-memory document storage
 - **MockEmailSender**: Captures sent emails, and can fail for chosen recipients
+- **MockPushSender**: Captures pushes, and can fail
 - **MockAPIKeyValidator**: Plain comparison of the provided and expected keys
 
 ### `internal/ports/` - Port Interfaces (Hexagonal Architecture)
@@ -203,11 +272,13 @@ Defines contracts for external dependencies:
 - **ConfigStore**: Get/set configuration
 - **DocumentStore**: Retrieve documents
 - **EmailSender**: Send an email, with optional attachments
+- **PushSender**: Push a notice to the owner's phone
 - **APIKeyValidator**: Validate API keys
 
 ### `internal/qrconfig/` - Setup QR Code
-- Builds the QR code's JSON payload, `{"v":1,"endpoint":"…","apiKey":"…"}`;
-  the app rejects a version it doesn't know
+- Builds the QR code's JSON payload, `{"v":1,"endpoint":"…","apiKey":"…"}`,
+  with an optional `push` object holding the Firebase client settings; the
+  app rejects a version it doesn't know
 
 ### `android/` - Android Check-in App
 Kotlin and Jetpack Compose, for Android 11 and later:
@@ -215,7 +286,9 @@ Kotlin and Jetpack Compose, for Android 11 and later:
   Keystore key that needs the fingerprint or screen lock for every use; and
   the QR payload's parser
 - **auth/**: Authorises the Keystore key with BiometricPrompt
-- **checkin/**: `POST <endpoint>/checkin` and its result
+- **checkin/**: `POST <endpoint>/checkin`, with the push token, and its result
+- **push/**: Firebase, started at run time from the QR code's push settings;
+  the messaging service, and the notifications
 - **ui/**: The config entry screen (by hand or by QR scan) and the check-in
   screen
 
@@ -232,6 +305,8 @@ Terraform files defining AWS resources:
 - **eventbridge.tf**: Scheduled rule, target and dead-letter queue
 - **ses.tf**: SES domain identity, verified with DKIM
 - **alarms.tf**: Alarms that email the owner if the daily run fails or does not run
+- **push.tf**: With `firebase_service_account_file` set, the SNS platform
+  application for FCM, the alarmpush Lambda and the push alarms
 - **variables.tf**: Input variables
 - **outputs.tf**: Output values
 - **data.tf**: Data sources (AWS account ID)
@@ -272,52 +347,11 @@ Benefits:
 - Easy to add new adapters or handlers
 - Clear separation of concerns
 
-## Testing Strategy
+## Building, Testing and Deploying
 
-### Unit Tests
-Located in `*_test.go` files within each package:
-- Domain service tests with time injection
-- HTTP and scheduled handler tests with mocks
-- Configuration parsing and validation tests
-- SES adapter tests that parse the built MIME message
-
-### Test Execution
-```bash
-go test -v ./...           # Run all tests
-go test -cover ./...       # With coverage
-go test -run TestName ./internal/domain  # Specific test
-```
-
-### Mock Usage
-Handler tests use the mocks from `internal/mocks/` for the ports, and the real
-domain service with a fixed clock:
-```go
-configStore := mocks.NewMockConfigStore()
-emailSender := mocks.NewMockEmailSender()
-validator := mocks.NewMockAPIKeyValidator()
-service := domain.NewDeadmansHandleServiceWithTime(now)
-```
-
-## Build Process
-
-### Local Development
-```bash
-make build          # Builds the Lambda handlers
-make test           # Runs tests
-make clean          # Removes artifacts
-make qrcode         # Writes the setup QR code, checkin-qr.png
-make android-test   # Android unit tests and lint
-make android        # Android release APK
-```
-
-### Production Build
-- Compiles for Linux ARM64 (Lambda architecture), CGO off, `lambda.norpc`
-- Names each binary `bootstrap`, as the `provided.al2023` runtime expects
-
-### Terraform Deployment
-- Zips each binary (with the executable bit set) into `terraform/build/`
-- Uploads the zips directly as the Lambda functions' code
-- Manages all AWS infrastructure
+See [DEVELOPMENT.md](DEVELOPMENT.md): [Building](DEVELOPMENT.md#building),
+[Testing Guidelines](DEVELOPMENT.md#testing-guidelines) and
+[Deploying Changes](DEVELOPMENT.md#deploying-changes).
 
 ## Environment Variables
 
@@ -327,43 +361,19 @@ make android        # Android release APK
 - `SENDER_EMAIL`: Sender address, in the SES-verified domain
 - `DOCUMENT_BUCKET`: S3 bucket name (scheduled and docwatch)
 - `DOCUMENT_KEY`: S3 object key (scheduled and docwatch)
-
-### Build/Deployment
-- `GOOS`: Operating system (linux for Lambda)
-- `GOARCH`: Architecture (arm64 for Lambda)
-- AWS credentials via standard AWS CLI
+- `PUSH_PLATFORM_APPLICATION_ARN`: SNS platform application for push, empty
+  when push is off (scheduled, docwatch and alarmpush)
 
 ## Dependencies
 
-### Go Dependencies (Standard Library Focus)
 - `github.com/aws/aws-lambda-go`: Lambda runtime
 - `github.com/aws/aws-sdk-go-v2`: AWS SDK
 - `github.com/skip2/go-qrcode`: QR codes, in `cmd/qrconfig` only
 - Standard library: encoding/json, time, context, log/slog, mime, etc.
 
-### External Tools
-- Go 1.26+ (see `go.mod`)
-- Terraform 1.5+
-- AWS CLI
-- Make (optional)
-- Android Studio, for its JDK and the Android SDK (the Android app only)
+The tools needed to build are in
+[DEVELOPMENT.md](DEVELOPMENT.md#1-install-dependencies).
 
 ## Security Considerations
 
-1. **API Key Validation**: Uses `subtle.ConstantTimeCompare` to prevent timing attacks
-2. **S3 Security**: All public access blocked, optional versioning (`document_versioning`, off by default) with old versions expiring after 30 days
-3. **Parameter Store**: The configuration, which holds the API key, is a SecureString
-4. **IAM Least Privilege**: Lambda role only has necessary permissions
-5. **SES Verification**: The sender domain is verified with DKIM by Terraform
-6. **Input Validation**: `Config.Validate` checks every configuration field
-7. **Logging**: The API key and the document are never logged
-
-## Deployment Flow
-
-1. Developer runs `make build` to compile binaries
-2. Developer runs Terraform `init`, `plan`, `apply`
-3. Terraform archives binaries and creates Lambda functions
-4. API Gateway routes HTTP requests to HTTP handler
-5. EventBridge triggers scheduled handler daily
-6. Handlers use adapters to call AWS services
-7. Core domain logic remains independent and testable
+See [README.md](README.md#security-considerations).

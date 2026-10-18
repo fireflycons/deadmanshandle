@@ -23,6 +23,16 @@ output "docwatch_lambda_function_name" {
   value       = aws_lambda_function.docwatch_handler.function_name
 }
 
+output "alarmpush_lambda_function_name" {
+  description = "Alarm Push Lambda function name (null when push is off)"
+  value       = try(aws_lambda_function.alarmpush_handler[0].function_name, null)
+}
+
+output "push_platform_application_arn" {
+  description = "SNS platform application for push to the Android app (null when push is off)"
+  value       = try(aws_sns_platform_application.fcm[0].arn, null)
+}
+
 output "state_table_name" {
   description = "DynamoDB table holding the timeout and delivery state"
   value       = aws_dynamodb_table.state.name

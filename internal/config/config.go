@@ -38,6 +38,10 @@ type State struct {
 	DocumentChangedAt time.Time
 	// Whether the owner has yet to be told of that change
 	DocumentChangePending bool
+
+	// FCM registration token of the owner's phone, sent with its check-ins.
+	// Empty until the app has checked in; owner notices are pushed to it.
+	PushToken string
 }
 
 // ParseConfig parses and validates JSON configuration

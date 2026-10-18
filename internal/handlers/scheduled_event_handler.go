@@ -19,6 +19,7 @@ type ScheduledEventHandler struct {
 	stateStore     ports.StateStore
 	documentStore  ports.DocumentStore
 	emailSender    ports.EmailSender
+	pushSender     ports.PushSender // nil when push is not set up
 	service        *domain.DeadmansHandleService
 	watcher        *DocumentWatcher
 	paramName      string
@@ -32,6 +33,7 @@ func NewScheduledEventHandler(
 	stateStore ports.StateStore,
 	documentStore ports.DocumentStore,
 	emailSender ports.EmailSender,
+	pushSender ports.PushSender,
 	service *domain.DeadmansHandleService,
 	watcher *DocumentWatcher,
 	parameterName string,
@@ -43,6 +45,7 @@ func NewScheduledEventHandler(
 		stateStore:     stateStore,
 		documentStore:  documentStore,
 		emailSender:    emailSender,
+		pushSender:     pushSender,
 		service:        service,
 		watcher:        watcher,
 		paramName:      parameterName,
@@ -115,11 +118,16 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	// Send each email individually so that one failure does not stop the
 	// rest, recording each success straight away so later runs only retry
 	// the failures. A record is refused once the owner has checked in, which
-	// stops the run.
+	// stops the run. Owner notices are also pushed, whether or not the email
+	// was sent.
 	for _, email := range emails {
 		var emailAttachments map[string][]byte
 		if email.AttachDocument() {
 			emailAttachments = attachments
+		}
+
+		if email.ForOwner() {
+			pushToOwner(ctx, h.pushSender, state.PushToken, email)
 		}
 
 		if err := h.emailSender.SendEmail(ctx, email.To, email.Subject, email.Body, emailAttachments); err != nil {

@@ -1,6 +1,9 @@
 # Development Guide
 
-This guide covers how to develop and extend the Deadman's Handle application.
+This guide covers working with the source in a clone of the repository:
+building, testing, developing and extending the Deadman's Handle application
+and its Android app, and how CI makes the releases. To deploy a release, which
+needs no building, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Local Development Setup
 
@@ -16,8 +19,8 @@ brew install git
 # Optional: Make (for build automation)
 brew install make
 
-# For infrastructure changes: Terraform 1.5+
-brew install terraform
+# To deploy, and for infrastructure changes: Terraform 1.5+ and the AWS CLI
+brew install terraform awscli
 
 # For the Android app: Android Studio, for its JDK and the Android SDK
 brew install --cask android-studio
@@ -26,6 +29,23 @@ brew install --cask android-studio
 The Makefile needs GNU make 4.x and works from any shell, including
 PowerShell or cmd on Windows. On Windows, use Git Bash for the other shell
 commands in this guide.
+
+The Android app needs nothing on the PATH. Its build uses:
+
+- **Gradle**, through the wrapper in `android/` (`gradlew`), which downloads
+  the version it needs.
+- **JDK 25** for the Gradle daemon (`android/gradle/gradle-daemon-jvm.properties`).
+  Android Studio's own JDK (its `jbr` directory) is suitable.
+- **The Android SDK**, with the platform for `compileSdk` (in
+  `android/app/build.gradle.kts`). Install it with Android Studio's SDK
+  Manager; opening `android/` in Android Studio offers to install what is
+  missing. Gradle downloads the app's libraries (Compose, Biometric, the
+  Play services code scanner, Firebase Messaging) itself.
+- **An emulator or a device** for anything beyond the JVM tests; see
+  [Android App](#android-app).
+
+See [Building the Android App](#building-the-android-app) for pointing the
+build at the JDK and the SDK.
 
 ### 2. Clone and Setup
 
@@ -42,21 +62,9 @@ go build -v ./...
 
 ### 3. Project Layout
 
-```
-internal/
-  ├── config/       # Config JSON type and its validation
-  ├── domain/       # Business logic and the clock - main development focus
-  ├── ports/        # Interfaces to AWS services (must not import domain)
-  ├── adapters/     # AWS implementations of the ports
-  ├── handlers/     # Lambda entry logic: wires ports and domain together
-  └── mocks/        # Test doubles for the ports
-cmd/
-  ├── http/         # HTTP Lambda main (check-in)
-  ├── scheduled/    # Scheduled Lambda main (daily run)
-  └── qrconfig/     # CLI: QR code that sets up the Android app
-android/            # Android check-in app (see Android App below)
-terraform/          # Infrastructure
-```
+See [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for the layout of the
+repository and the hexagonal architecture. Most development is in
+`internal/domain`, the business rules.
 
 ### 4. Conventions
 
@@ -64,6 +72,57 @@ terraform/          # Infrastructure
 - Times are UTC. Emails show deadlines as `Monday 2 January 2006 at 15:04 MST`.
 - Use the standard library plus the AWS SDK only. The one exception is
   `github.com/skip2/go-qrcode`, used only by `cmd/qrconfig`.
+
+## Building
+
+`make help` lists the targets. `make clean` removes everything they build.
+
+### Building the Lambdas
+
+```bash
+# Check everything compiles (the binaries only run inside Lambda)
+go build ./...
+
+# Lambda binaries: linux/arm64, named bootstrap
+make build
+
+# Equivalent to:
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
+```
+
+Terraform deploys these binaries from `bin/`; see
+[Deploying Changes](#deploying-changes). Go records the commit in each binary,
+so every rebuild shows as a code change in the plan.
+
+### Building the Android App
+
+```bash
+make android-test   # JVM unit tests and lint
+make android        # Release APK: android/app/build/outputs/apk/release/app-release.apk
+```
+
+On Windows the Makefile points `JAVA_HOME` at Android Studio's JDK
+(`C:\Program Files\Android\Android Studio\jbr`) and `ANDROID_HOME` at
+`%LOCALAPPDATA%\Android\Sdk`; override them with `ANDROID_JAVA_HOME=...` and
+`ANDROID_HOME=...`. Elsewhere, set `JAVA_HOME` and `ANDROID_HOME` yourself.
+
+Don't pipe `make android` or `make android-test` into another command: the
+Gradle daemon keeps the pipe open and the command never ends. Redirect to a
+file instead.
+
+The release build is signed with the release key when `ANDROID_KEYSTORE_FILE`
+(a PKCS12 keystore), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` are
+set. The key's password is the keystore's. Without them it is debug-signed,
+which is fine for testing but can't update an installed release.
+
+### The Setup QR Code
+
+`make qrcode` builds and runs `cmd/qrconfig` for this machine, writing the QR
+code that sets up the app; see
+[Make the Setup QR Code](DEPLOYMENT.md#2-make-the-setup-qr-code).
 
 ## Development Workflow
 
@@ -240,7 +299,8 @@ if len(emailSender.SentEmails) == 0 {
 ### Running Tests
 
 ```bash
-# All tests
+# All Go tests
+make test
 go test -v ./...
 
 # With coverage
@@ -253,20 +313,8 @@ go test -v ./internal/domain
 go test -run TestCheckIn ./internal/domain
 ```
 
-### Building
-
-```bash
-# Check everything compiles (the binaries only run inside Lambda)
-go build ./...
-
-# Lambda binaries: linux/arm64, named bootstrap
-make build
-
-# Equivalent to:
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
-```
+The Android app's tests are run with `make android-test`; see
+[Building the Android App](#building-the-android-app).
 
 ### Debugging
 
@@ -429,27 +477,11 @@ The check-in API returns short, generic messages; the details go to the logs.
 ## Android App
 
 The check-in app is in `android/`: Kotlin and Jetpack Compose, `minSdk` 30
-(Android 11). It opens in Android Studio, and builds with the Gradle wrapper:
+(Android 11). It opens in Android Studio; build it with make (see
+[Building the Android App](#building-the-android-app)).
 
-```bash
-make android-test   # JVM unit tests and lint
-make android        # Release APK: android/app/build/outputs/apk/release/app-release.apk
-```
-
-The Gradle daemon runs on JDK 25 (`android/gradle/gradle-daemon-jvm.properties`).
-On Windows the Makefile points `JAVA_HOME` at Android Studio's JDK and
-`ANDROID_HOME` at `%LOCALAPPDATA%\Android\Sdk`; override them with
-`ANDROID_JAVA_HOME=...` and `ANDROID_HOME=...`. Elsewhere, set `JAVA_HOME`
-and `ANDROID_HOME` yourself.
-
-The source, in `android/app/src/main/java/com/fireflycons/deadmanshandle/`:
-
-```
-config/     # The config, its secure storage, and the QR code's payload
-auth/       # BiometricPrompt: fingerprint or screen lock
-checkin/    # The check-in request and its result
-ui/         # Compose screens
-```
+Its source layout is in
+[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md#android---android-check-in-app).
 
 The API key is encrypted with an AES-GCM Android Keystore key that needs the
 fingerprint or screen lock for every use. The endpoint is stored in clear, so
@@ -457,14 +489,17 @@ it can be shown without a prompt. Backups and device transfers are off.
 
 Things to know:
 
-- The JVM tests cover the config, the QR payload and the check-in result; the
-  Keystore, the prompt and the scanner need a device or an emulator.
+- The JVM tests cover the config, the QR payload, the check-in result and
+  body, and the push message; the Keystore, the prompt, the scanner and
+  push need a device or an emulator. Push also needs a Google Play image and
+  a deployment with a Firebase project.
+- Firebase is started at run time from the setup QR code's push settings
+  (`DeadmansHandleApp`), so each deployment can use its own Firebase project
+  with the same APK. Don't add the Google services Gradle plugin or a
+  `google-services.json`.
 - The release build is minified with R8. `android/app/proguard-rules.pro`
   keeps ML Kit, whose internals break when R8 processes them.
 - Escape apostrophes in `strings.xml` as `\'`; an unescaped one fails the build.
-- Don't pipe `make android` or `make android-test` into another command: the
-  Gradle daemon keeps the pipe open and the command never ends. Redirect to a
-  file instead.
 - To test QR scanning on an emulator, use a Google Play system image, signed
   in to a Google account: the scanner is a Play services module, and a Google
   APIs image can't download it. Load the code with Extended controls >
@@ -472,16 +507,16 @@ Things to know:
   table.
 - Enrol a fingerprint on an emulator in its settings, touching the sensor with
   `adb emu finger touch 1`.
-
-The release build is signed with the release key when `ANDROID_KEYSTORE_FILE`
-(a PKCS12 keystore), `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS` are
-set. The key's password is the keystore's. Without them it is debug-signed,
-which is fine for testing but can't update an installed release.
+- Test the release APK on the emulator (`make android`, then `adb install -r`
+  with the APK): R8 problems only show in the minified build.
 
 ## Deploying Changes
 
-Deploy with Terraform, which zips the binaries from `bin/` during `plan` and
-`apply` and updates a function when its code changes:
+Deploying from a clone is as in
+[DEPLOYMENT.md](DEPLOYMENT.md#deploy-infrastructure), with your own build in
+place of a release's binaries. Deploy with Terraform, which zips the binaries
+from `bin/` during `plan` and `apply` and updates a function when its code
+changes:
 
 ```bash
 make build
@@ -507,12 +542,14 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   latest `master`.
 - **Release** (`release.yml`), on a push to `master` (a merged pull request):
   runs the CI checks, builds the Lambdas and the Android app, and creates the
-  GitHub release `v<VERSION>`. Its assets are `http.zip`, `scheduled.zip` and
-  `docwatch.zip`, each with an executable `bootstrap` (linux/arm64);
-  `deadmanshandle-terraform-v<VERSION>.tar.gz`, with `terraform/`,
-  `config.example.json` and `LICENSE` (from `git archive`, so tracked files
-  only, without `.tflint.hcl`); `deadmanshandle-v<VERSION>.apk`, signed with
-  the release key; and `SHA256SUMS`. The notes link to
+  GitHub release `v<VERSION>`. Its assets are `SHA256SUMS` and
+  `deadmanshandle-v<VERSION>.zip`, which unzips to
+  `deadmanshandle-v<VERSION>/` with `terraform/`, `config.example.json` and
+  `LICENSE` (from `git archive`, so tracked files only, without
+  `.tflint.hcl`), each Lambda's executable `bootstrap` (linux/arm64) in
+  `bin/<function>/`, `app/deadmanshandle-v<VERSION>.apk`, signed with the
+  release key, and `qrconfig/qrconfig-<os>-<arch>`, the QR code CLI for
+  Windows, macOS and Linux on amd64 and arm64. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
 

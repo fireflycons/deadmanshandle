@@ -26,8 +26,9 @@ type ConfigStore interface {
 type StateStore interface {
 	GetState(ctx context.Context) (*config.State, error)
 	// CheckIn sets the timeout, clears the delivery state and increments
-	// CheckIns. It is unconditional: a check-in always wins.
-	CheckIn(ctx context.Context, timeout time.Time) error
+	// CheckIns. It is unconditional: a check-in always wins. It also records
+	// pushToken, unless that is empty, which leaves the recorded one.
+	CheckIn(ctx context.Context, timeout time.Time, pushToken string) error
 	// RecordSent adds recipient to SentTo, and RecordOwnerNotified sets
 	// OwnerNotified, if CheckIns still equals checkIns. Otherwise they return
 	// ErrConditionFailed.
@@ -57,6 +58,12 @@ type DocumentStore interface {
 // EmailSender defines the interface for sending emails
 type EmailSender interface {
 	SendEmail(ctx context.Context, to, subject, body string, attachments map[string][]byte) error
+}
+
+// PushSender sends a push notification to the owner's phone. kind
+// identifies the message, so the app can choose how to show it.
+type PushSender interface {
+	Push(ctx context.Context, token, kind, title, body string) error
 }
 
 // APIKeyValidator defines the interface for validating API keys
