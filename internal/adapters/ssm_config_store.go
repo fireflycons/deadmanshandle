@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 // SSMConfigStore implements the ConfigStore interface using AWS Parameter Store
@@ -34,6 +36,19 @@ func (s *SSMConfigStore) GetConfig(ctx context.Context, parameterName string) ([
 	}
 
 	return []byte(*output.Parameter.Value), nil
+}
+
+// PutConfig replaces a SecureString parameter's value, encrypted with the
+// AWS-managed key as Terraform created it. Only the CLI writes the config;
+// the Lambdas only read it.
+func (s *SSMConfigStore) PutConfig(ctx context.Context, parameterName string, value []byte) error {
+	_, err := s.client.PutParameter(ctx, &ssm.PutParameterInput{
+		Name:      &parameterName,
+		Value:     aws.String(string(value)),
+		Type:      types.ParameterTypeSecureString,
+		Overwrite: boolPtr(true),
+	})
+	return err
 }
 
 func boolPtr(b bool) *bool {

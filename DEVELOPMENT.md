@@ -437,8 +437,9 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
    `terraform/parameter_store.tf`
 3. **Add tests** for new field
 4. **Update documentation** in README.md and DEPLOYMENT.md. Deployed configs
-   are updated with `aws ssm put-parameter` (see DEPLOYMENT.md), since
-   Terraform only seeds the parameter.
+   are updated with `dmh config set` (see DEPLOYMENT.md), since Terraform only
+   seeds the parameter: add a flag for the field to `cmd/dmh/config.go` and
+   `cli.ConfigChange`, and show it in `cli.Report`.
 
 ## Performance
 

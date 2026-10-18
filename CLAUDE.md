@@ -52,7 +52,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
     stripped from the stored parameter. Older seed files have `documentKey`
     in `deployment`; Terraform still accepts it there.
   - Terraform only creates the parameter and the state item
-    (`ignore_changes`). Later changes go through the AWS CLI (DEPLOYMENT.md).
+    (`ignore_changes`). Later changes go through `dmh config set`, which
+    validates the result before writing it (DEPLOYMENT.md).
   - `/deadmanshandle/api-endpoint`, `document-bucket`, `state-table` and
     `sender-email` are plain parameters that Terraform keeps up to date, so
     the CLI can find the resources from the app name alone.

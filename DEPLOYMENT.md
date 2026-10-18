@@ -108,10 +108,19 @@ countdown are not reset (see
 settings into the stored configuration, as `documentKey`, and the Lambdas now
 require it. Add it to the stored configuration **before** `terraform apply`;
 the old Lambdas ignore it, but the new ones reject a configuration without
-it, and check-ins would fail. In `config.json`, move `documentKey` out of the
-`deployment` section to the top level (keep its value, or `document.pdf` if
-it had none), then upload it as in
-[Updating the Configuration](#updating-the-configuration).
+it, and check-ins would fail. Use the key from your `config.json`'s
+`deployment` section, or `document.pdf` if it has none, with the new release's
+`dmh` (see [Make the Setup QR Code](#2-make-the-setup-qr-code) for the program
+for your computer):
+
+```bash
+./dmh/dmh-linux-amd64 config set -document-key document.pdf
+```
+
+Then move `documentKey` in `config.json` from the `deployment` section to the
+top level, where new deployments have it, and apply. Until the apply,
+`dmh config show` reports the parameters the new Terraform creates as not
+found, and the other commands that need them refuse to run.
 
 ## Pre-deployment Setup
 
@@ -206,7 +215,8 @@ Rules, checked by `terraform plan` and again by both Lambdas on every run:
   state item when Terraform creates it. If it is already past then, the
   document is sent on the next daily run, so `terraform plan` warns about it.
 
-If the stored config breaks these rules (for example after a `put-parameter`),
+If the stored config breaks these rules (for example after an
+`aws ssm put-parameter`; `dmh config set` refuses to write an invalid one),
 check-ins fail with HTTP 500 and the daily run errors, which raises the
 `scheduled-errors` alarm. Nothing is sent until the config is fixed.
 
@@ -548,20 +558,38 @@ item, apart from the `deployment` section (see above). After that, Terraform
 ignores changes to both, so re-running `terraform apply` will not reset the
 configuration or the countdown.
 
-To update the configuration after deployment, write it directly. This no
-longer touches the timeout, which is in DynamoDB:
+To see or change the configuration after deployment, use `dmh config` (see
+[Make the Setup QR Code](#2-make-the-setup-qr-code) for the program for your
+computer). It uses the AWS credentials in the environment.
+
+`dmh config show` prints the settings, what Terraform fixed (the endpoint,
+bucket, state table and sender), and the state: the deadline, the delivery
+state, the document's last change and the push token. The API key and push
+token are shortened unless you add `-show-secrets`, and `-json` prints JSON.
+
+`dmh config set` changes the settings, with any of `-owner`,
+`-recipients a@example.com,b@example.com` (which replaces the list),
+`-reset-days`, `-warn-days`, `-api-key` and `-document-key`. It checks the
+result against the rules above and writes nothing if it breaks them. For
+example:
 
 ```bash
-# Update config.json
-vi config.json
-
-# Upload to Parameter Store
-aws ssm put-parameter \
-  --name /deadmanshandle/config \
-  --value file://config.json \
-  --overwrite \
-  --type SecureString
+./dmh/dmh-linux-amd64 config set -recipients executor@example.com,attorney@example.com -warn-days 5
 ```
+
+A new `-api-key` stops the app checking in until it scans a new QR code
+(`dmh qr -aws`). `dmh document put` sets `-document-key` for you when it
+uploads a document under a new name (see
+[Upload Document to S3](#2-upload-document-to-s3)).
+
+It can also change the state:
+
+- `-timeout 2030-01-01T00:00:00Z` sets the deadline to that time. Like a
+  check-in, it clears the delivery state, so a triggered handle starts over.
+  It refuses a time that has passed, which would send the document on the
+  next daily run, unless you add `-force`.
+- `-clear-push-token` forgets the app's push token, to stop pushes to a lost
+  phone. The next check-in from the app records a new one.
 
 The check-in Lambda caches the configuration for 5 minutes on a warm instance,
 so that a flood of requests does not cost an SSM and KMS call each. For up to
@@ -569,9 +597,8 @@ so that a flood of requests does not cost an SSM and KMS call each. For up to
 including the old `apiKey`. The daily run and the document watch always read
 the current configuration.
 
-The Lambdas ignore the `deployment` section and `timeout`. To change the
-`deployment` section, edit `config.json` and run `terraform apply`; the
-timeout is changed by checking in.
+To change the `deployment` section, edit `config.json` and run
+`terraform apply`.
 
 ### Checking in without the API
 

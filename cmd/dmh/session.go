@@ -10,6 +10,13 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
+	"github.com/fireflycons/deadmanshandle/internal/cli"
+)
+
+// Compile-time checks that the adapters have what the CLI needs
+var (
+	_ cli.ConfigReadWriter = (*adapters.SSMConfigStore)(nil)
+	_ cli.StateEditor      = (*adapters.DynamoDBStateStore)(nil)
 )
 
 // session holds the AWS clients of one command. Each command looks up only

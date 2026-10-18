@@ -44,10 +44,11 @@ type command struct {
 var commands = map[string]command{
 	"qr":      {"write the app's setup QR code", runQR},
 	"checkin": {"check in, resetting the deadline", runCheckIn},
+	"config":  {"show or change the settings and state", runConfig},
 }
 
 // commandOrder is the order commands are listed in the usage
-var commandOrder = []string{"checkin", "qr"}
+var commandOrder = []string{"checkin", "config", "qr"}
 
 func main() {
 	err := run(context.Background(), os.Args[1:])
@@ -103,4 +104,28 @@ func newFlagSet(name, synopsis string) *flag.FlagSet {
 		fs.PrintDefaults()
 	}
 	return fs
+}
+
+// subcommand runs one of a command's subcommands, such as "config show"
+func subcommand(ctx context.Context, g globals, name string, subs map[string]command, order []string, args []string) error {
+	printUsage := func() {
+		_, _ = fmt.Fprintf(os.Stderr, "Usage: dmh %s <subcommand> [flags]\n\nSubcommands:\n", name)
+		for _, sub := range order {
+			_, _ = fmt.Fprintf(os.Stderr, "  %-10s %s\n", sub, subs[sub].summary)
+		}
+	}
+	if len(args) == 0 {
+		printUsage()
+		return fmt.Errorf("%s: no subcommand given", name)
+	}
+	if args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
+		printUsage()
+		return flag.ErrHelp
+	}
+	sub, ok := subs[args[0]]
+	if !ok {
+		printUsage()
+		return fmt.Errorf("%s: unknown subcommand %q", name, args[0])
+	}
+	return sub.run(ctx, g, args[1:])
 }
