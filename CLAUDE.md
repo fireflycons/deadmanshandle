@@ -302,7 +302,7 @@ Never write them into files in the repository.
 - A flood exhausts the shared throttle and blocks check-ins too. HTTP APIs
   have no WAF or per-key usage plans, and a REST API was declined. The
   `api-rejected-requests` alarm tells the owner, who can check in with
-  `aws dynamodb update-item`.
+  `dmh checkin`.
 - Overlapping runs, or a send whose record fails, can deliver a document
   twice; a duplicate is preferred to a recipient missing out. A check-in
   can't recall an email already being sent.

@@ -42,11 +42,12 @@ type command struct {
 }
 
 var commands = map[string]command{
-	"qr": {"write the app's setup QR code", runQR},
+	"qr":      {"write the app's setup QR code", runQR},
+	"checkin": {"check in, resetting the deadline", runCheckIn},
 }
 
 // commandOrder is the order commands are listed in the usage
-var commandOrder = []string{"qr"}
+var commandOrder = []string{"checkin", "qr"}
 
 func main() {
 	err := run(context.Background(), os.Args[1:])
@@ -103,4 +104,3 @@ func newFlagSet(name, synopsis string) *flag.FlagSet {
 	}
 	return fs
 }
-

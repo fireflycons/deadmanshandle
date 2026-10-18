@@ -575,19 +575,15 @@ timeout is changed by checking in.
 
 ### Checking in without the API
 
-If the API is unavailable, set the timeout in DynamoDB directly. This does
-what a check-in does, including clearing the delivery state:
+If the API is unavailable, or throttled by a flood of requests, check in with
+`dmh checkin` (see [Make the Setup QR Code](#2-make-the-setup-qr-code) for
+the program for your computer). It uses the AWS credentials in the
+environment rather than the API key, and does what a check-in does: the
+deadline moves to `resetDays` from now and the delivery state is cleared. The
+app's push token is kept.
 
 ```bash
-# A new timeout, resetDays from now (GNU date; on macOS: date -u -v+30d ...)
-TIMEOUT=$(date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)
-
-aws dynamodb update-item \
-  --table-name deadmanshandle-state \
-  --key '{"id":{"S":"handle"}}' \
-  --update-expression 'SET #t = :t REMOVE sentTo, ownerNotified ADD checkIns :one' \
-  --expression-attribute-names '{"#t":"timeout"}' \
-  --expression-attribute-values "{\":t\":{\"S\":\"$TIMEOUT\"},\":one\":{\"N\":\"1\"}}"
+./dmh/dmh-linux-amd64 checkin
 ```
 
 ## Cleanup
@@ -696,7 +692,7 @@ parameter, then run `terraform apply` so the subscription follows.
 - `deadmanshandle-api-rejected-requests`: the check-in API rejected 10 or more
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.
-  While it lasts, check in with the AWS CLI (see
+  While it lasts, check in with `dmh checkin` (see
   [Checking in without the API](#checking-in-without-the-api)).
 
 With push notifications on, the `alarmpush` Lambda also pushes each alarm to
