@@ -18,10 +18,17 @@ const deadlineFormat = "Monday 2 January 2006 at 15:04 MST"
 // FormatTime shows t in UTC, and also in local time if that differs
 func FormatTime(t time.Time) string {
 	utc := t.UTC().Format(deadlineFormat)
-	if local := t.Local(); local.Format("MST") != "UTC" {
+	if local := t.Local(); localOffset(local) != 0 {
 		return utc + " (" + local.Format(deadlineFormat) + ")"
 	}
 	return utc
+}
+
+// localOffset is t's offset from UTC in seconds, which is zero for GMT as
+// well as UTC
+func localOffset(t time.Time) int {
+	_, offset := t.Zone()
+	return offset
 }
 
 // ReadConfig reads and validates the stored config, as the Lambdas do
