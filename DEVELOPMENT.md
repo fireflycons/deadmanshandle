@@ -119,6 +119,12 @@ The release build is signed with the release key when `ANDROID_KEYSTORE_FILE`
 set. The key's password is the keystore's. Without them it is debug-signed,
 which is fine for testing but can't update an installed release.
 
+### The dmh CLI
+
+`make dmh` builds the CLI for this machine as `bin/dmh/dmh` (`dmh.exe` on
+Windows). Releases build it for each desktop platform. `go run ./cmd/dmh`
+also works.
+
 ### The Setup QR Code
 
 `make qrcode` builds and runs `dmh qr` for this machine, writing the QR
@@ -305,7 +311,14 @@ make test
 go test -v ./...
 
 # With coverage
+make local
 go test -cover ./...
+
+# go vet and golangci-lint, as CI runs them
+make lint
+
+# The Terraform configuration, without the backend
+make validate
 
 # Specific package
 go test -v ./internal/domain

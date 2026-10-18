@@ -193,8 +193,10 @@ native Windows make and sh elsewhere. Use Git Bash for POSIX commands.
 ```bash
 go build ./... && go vet ./... && go test ./internal/...
 make build          # bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap (linux/arm64, CGO off, lambda.norpc)
+make lint           # go vet and golangci-lint, as CI
+make dmh            # bin/dmh/dmh(.exe), the CLI for this machine
 make qrcode         # checkin-qr.png; QRFLAGS="-aws -firebase google-services.json" (state is in S3)
-cd terraform && terraform init -backend=false && terraform validate
+make validate       # terraform init -backend=false && terraform validate
 make android-test   # Android JVM unit tests and lint
 make android        # Android release APK (debug-signed locally)
 ```
