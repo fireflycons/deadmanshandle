@@ -182,7 +182,6 @@ deadmanshandle/
 ├── DEPLOYMENT.md                         # Deployment guide
 ├── DEVELOPMENT.md                        # Development guide
 ├── PROJECT_STRUCTURE.md                  # This file
-├── spec.md                               # Original requirements
 ├── config.example.json                   # Example configuration
 └── config.json                           # Configuration (git-ignored)
 ```

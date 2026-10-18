@@ -4,9 +4,8 @@
 
 A "dead man's handle": the owner checks in periodically, from an Android app
 or over the HTTP API. If they stop, a daily scheduled run emails a document
-from S3 to a list of recipients. Requirements: [spec.md](spec.md) (service)
-and [client-app.md](client-app.md) (app). User-facing docs: README,
-DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
+from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
+(including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 
 ## Layout
 
