@@ -58,3 +58,10 @@ google-services.json
 # Logs
 logs/
 *.log
+
+# Other
+*.doc
+*.docx
+*.pdf
+
+instructions.md

@@ -360,7 +360,6 @@ See [DEVELOPMENT.md](DEVELOPMENT.md): [Building](DEVELOPMENT.md#building),
 - `STATE_TABLE_NAME`: DynamoDB state table (all functions)
 - `SENDER_EMAIL`: Sender address, in the SES-verified domain
 - `DOCUMENT_BUCKET`: S3 bucket name (scheduled and docwatch)
-- `DOCUMENT_KEY`: S3 object key (scheduled and docwatch)
 - `PUSH_PLATFORM_APPLICATION_ARN`: SNS platform application for push, empty
   when push is off (scheduled, docwatch and alarmpush)
 

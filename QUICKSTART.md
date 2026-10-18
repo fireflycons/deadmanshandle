@@ -80,7 +80,7 @@ request a minute, so quick repeated calls usually get HTTP 429; see
 ## 6. Upload Your Document
 
 ```bash
-# From the terraform directory; the key must match deployment.documentKey (default document.pdf)
+# From the terraform directory; the key must match documentKey (default document.pdf)
 aws s3 cp important-document.pdf \
   "s3://$(terraform output -raw document_bucket_name)/document.pdf"
 ```

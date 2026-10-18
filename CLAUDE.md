@@ -43,15 +43,19 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 ## Runtime behaviour (invariants to preserve)
 
 - **Config:** one SecureString SSM parameter (`/deadmanshandle/config`)
-  holding `owner`, `recipients`, `resetDays`, `warnDays` and `apiKey`.
+  holding `owner`, `recipients`, `resetDays`, `warnDays`, `apiKey` and
+  `documentKey`.
   - The Lambdas only read it, and validate it strictly.
   - The seed file (`config.json`) also has `timeout`, which seeds the state,
-    and a `deployment` section (`senderEmail`, `documentBucket`,
-    `documentKey`). Terraform reads `deployment` and passes it to the Lambdas
-    as env vars. Both are stripped from the stored parameter.
+    and a `deployment` section (`senderEmail`, `documentBucket`). Terraform
+    reads `deployment` and passes it to the Lambdas as env vars. Both are
+    stripped from the stored parameter. Older seed files have `documentKey`
+    in `deployment`; Terraform still accepts it there.
   - Terraform only creates the parameter and the state item
     (`ignore_changes`). Later changes go through the AWS CLI (DEPLOYMENT.md).
-  - `/deadmanshandle/api-endpoint` holds the endpoint for `qrconfig -aws`.
+  - `/deadmanshandle/api-endpoint`, `document-bucket`, `state-table` and
+    `sender-email` are plain parameters that Terraform keeps up to date, so
+    the CLI can find the resources from the app name alone.
 - **State:** one DynamoDB item (`id = "handle"` in `deadmanshandle-state`):
   `timeout`, `checkIns`, `sentTo`, `ownerNotified`, `documentETag`,
   `documentChangedAt`, `documentChangePending` and `pushToken`.
@@ -82,6 +86,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   - `GetObject` uses `IfMatch` with the checked ETag.
 - **Document changes:** S3 upload events reach the docwatch Lambda through
   EventBridge, and the daily run repeats the check.
+  - The rule matches every upload to the bucket, since the key is in the
+    config; docwatch ignores events for other keys.
   - The first ETag seen is recorded silently.
   - A new ETag sets `documentChangedAt` and `documentChangePending`, then
     emails the owner. A failed email stays pending and is retried 2 minutes

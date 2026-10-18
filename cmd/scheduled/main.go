@@ -57,7 +57,6 @@ func init() {
 	watcher := handlers.NewDocumentWatcher(stateStore, emailSender, pushSender, service)
 	paramName := os.Getenv("CONFIG_PARAMETER_NAME")
 	docBucket := os.Getenv("DOCUMENT_BUCKET")
-	docKey := os.Getenv("DOCUMENT_KEY")
 	scheduledHandler = handlers.NewScheduledEventHandler(
 		configStore,
 		stateStore,
@@ -68,7 +67,6 @@ func init() {
 		watcher,
 		paramName,
 		docBucket,
-		docKey,
 	)
 }
 

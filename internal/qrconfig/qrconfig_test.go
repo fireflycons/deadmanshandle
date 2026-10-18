@@ -54,7 +54,8 @@ func TestAPIKeyFromConfig(t *testing.T) {
 		"warnDays": 7,
 		"timeout": "2030-01-01T00:00:00Z",
 		"apiKey": "secret",
-		"deployment": {"senderEmail": "noreply@example.com", "documentBucket": "", "documentKey": "document.pdf"}
+		"documentKey": "document.pdf",
+		"deployment": {"senderEmail": "noreply@example.com", "documentBucket": ""}
 	}`
 	key, err := APIKeyFromConfig([]byte(valid))
 	if err != nil {

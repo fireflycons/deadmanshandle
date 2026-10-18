@@ -10,13 +10,19 @@ locals {
   deployment           = try(local.seed_config.deployment, {})
   sender_email         = try(local.deployment.senderEmail, "")
   document_bucket_name = try(local.deployment.documentBucket, "")
-  document_key         = try(local.deployment.documentKey, "document.pdf")
+
+  # Stored in the parameter, so that it can be changed without Terraform.
+  # Older seed files have it in the deployment section.
+  document_key = try(local.seed_config.documentKey, local.deployment.documentKey, "document.pdf")
 }
 
 resource "aws_ssm_parameter" "config" {
-  name  = "/${var.application_name}/config"
-  type  = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
-  value = jsonencode({ for k, v in local.seed_config : k => v if !contains(["deployment", "timeout", "sentTo", "ownerNotified"], k) })
+  name = "/${var.application_name}/config"
+  type = "SecureString" # holds the API key; encrypted with the AWS-managed key alias/aws/ssm
+  value = jsonencode(merge(
+    { for k, v in local.seed_config : k => v if !contains(["deployment", "timeout", "sentTo", "ownerNotified"], k) },
+    { documentKey = local.document_key },
+  ))
 
   # The config file only seeds the parameter; after that it is updated with
   # the AWS CLI (see DEPLOYMENT.md), so later applies must not reset it from
@@ -51,7 +57,7 @@ resource "aws_ssm_parameter" "config" {
     }
     precondition {
       condition     = try(trimspace(local.document_key) != "", false)
-      error_message = "Config: deployment.documentKey is blank."
+      error_message = "Config: documentKey is blank."
     }
   }
 
@@ -69,6 +75,38 @@ resource "aws_ssm_parameter" "api_endpoint" {
 
   tags = merge(var.tags, {
     Name = "API Endpoint"
+  })
+}
+
+# Like the endpoint, these let the CLI find the resources from the
+# application name alone. Not secret, and not read by the Lambdas.
+resource "aws_ssm_parameter" "document_bucket" {
+  name  = "/${var.application_name}/document-bucket"
+  type  = "String"
+  value = aws_s3_bucket.document_bucket.id
+
+  tags = merge(var.tags, {
+    Name = "Document Bucket"
+  })
+}
+
+resource "aws_ssm_parameter" "state_table" {
+  name  = "/${var.application_name}/state-table"
+  type  = "String"
+  value = aws_dynamodb_table.state.name
+
+  tags = merge(var.tags, {
+    Name = "State Table"
+  })
+}
+
+resource "aws_ssm_parameter" "sender_email" {
+  name  = "/${var.application_name}/sender-email"
+  type  = "String"
+  value = local.sender_email
+
+  tags = merge(var.tags, {
+    Name = "Sender Email"
   })
 }
 

@@ -24,7 +24,6 @@ type ScheduledEventHandler struct {
 	watcher        *DocumentWatcher
 	paramName      string
 	documentBucket string
-	documentKey    string
 }
 
 // NewScheduledEventHandler creates a new scheduled event handler
@@ -38,7 +37,6 @@ func NewScheduledEventHandler(
 	watcher *DocumentWatcher,
 	parameterName string,
 	docBucket string,
-	docKey string,
 ) *ScheduledEventHandler {
 	return &ScheduledEventHandler{
 		configStore:    configStore,
@@ -50,7 +48,6 @@ func NewScheduledEventHandler(
 		watcher:        watcher,
 		paramName:      parameterName,
 		documentBucket: docBucket,
-		documentKey:    docKey,
 	}
 }
 
@@ -69,7 +66,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 
 	// Check for the document on every run, so the owner hears about a
 	// missing one before it is needed
-	doc, err := lookupDocument(ctx, h.documentStore, h.documentBucket, h.documentKey)
+	doc, err := lookupDocument(ctx, h.documentStore, h.documentBucket, cfg.DocumentKey)
 	if err != nil {
 		return err
 	}
@@ -105,13 +102,13 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	// Lambda retry the run, which checks the new one first.
 	var attachments map[string][]byte
 	if slices.ContainsFunc(emails, domain.EmailAction.AttachDocument) {
-		content, err := h.documentStore.GetDocument(ctx, h.documentBucket, h.documentKey, doc.ETag)
+		content, err := h.documentStore.GetDocument(ctx, h.documentBucket, cfg.DocumentKey, doc.ETag)
 		if err != nil {
 			return errors.Join(append(errs, fmt.Errorf("fetching the document: %w", err))...)
 		}
 		// Named after the object, e.g. "wills/will.pdf" is attached as "will.pdf"
 		attachments = map[string][]byte{
-			path.Base(h.documentKey): content,
+			path.Base(cfg.DocumentKey): content,
 		}
 	}
 

@@ -27,7 +27,7 @@ func newDocumentWatchTest(t *testing.T) (*DocumentWatchHandler, *mocks.MockState
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
 	watcher := NewDocumentWatcher(stateStore, emailSender, nil, service)
-	handler := NewDocumentWatchHandler(configStore, documentStore, watcher, testParam, testBucket, testKey)
+	handler := NewDocumentWatchHandler(configStore, documentStore, watcher, testParam, testBucket)
 
 	return handler, stateStore, documentStore, emailSender
 }
@@ -74,7 +74,7 @@ func TestDocumentWatchHandler(t *testing.T) {
 				}
 				emailSender.SentEmails = nil
 
-				if err := handler.Handle(context.Background(), testOrigin); err != nil {
+				if err := handler.Handle(context.Background(), testKey, testOrigin); err != nil {
 					t.Fatalf("Step %d: Handle failed: %v", i, err)
 				}
 
@@ -95,12 +95,27 @@ func TestDocumentWatchHandler(t *testing.T) {
 	}
 }
 
+func TestDocumentWatchHandlerIgnoresOtherObjects(t *testing.T) {
+	handler, stateStore, documentStore, emailSender := newDocumentWatchTest(t)
+	documentStore.SetDocument(testBucket, testKey, []byte("v1"))
+	stateStore.State.DocumentETag = `"recorded before the change"`
+
+	// The document changed, but the event is for another object, so its
+	// requester must not be reported as the change's
+	if err := handler.Handle(context.Background(), "other.pdf", testOrigin); err != nil {
+		t.Fatalf("Handle failed: %v", err)
+	}
+	if len(emailSender.SentEmails) != 0 || stateStore.State.DocumentETag != `"recorded before the change"` {
+		t.Errorf("Expected the event ignored, got emails %+v and state %+v", emailSender.SentEmails, stateStore.State)
+	}
+}
+
 func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 	handler, stateStore, documentStore, emailSender := newDocumentWatchTest(t)
 
 	// The first document is recorded silently and is not timed
 	documentStore.SetDocument(testBucket, testKey, []byte("v1"))
-	if err := handler.Handle(context.Background(), testOrigin); err != nil {
+	if err := handler.Handle(context.Background(), testKey, testOrigin); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 	if state := stateStore.State; !state.DocumentChangedAt.IsZero() || state.DocumentChangePending {
@@ -112,7 +127,7 @@ func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 	sendErr := errors.New("SES rejected address")
 	emailSender.FailFor["owner@example.com"] = sendErr
 	documentStore.SetDocument(testBucket, testKey, []byte("v2"))
-	if err := handler.Handle(context.Background(), testOrigin); !errors.Is(err, sendErr) {
+	if err := handler.Handle(context.Background(), testKey, testOrigin); !errors.Is(err, sendErr) {
 		t.Fatalf("Expected the send failure, got %v", err)
 	}
 	v2, _, _ := documentStore.DocumentETag(context.Background(), testBucket, testKey)
@@ -122,7 +137,7 @@ func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 	delete(emailSender.FailFor, "owner@example.com")
 
 	// Too soon to resend: the check that found the change may still be running
-	if err := handler.Handle(context.Background(), nil); err != nil {
+	if err := handler.Handle(context.Background(), testKey, nil); err != nil {
 		t.Fatalf("Handle failed: %v", err)
 	}
 	if len(changeNotices(emailSender)) != 0 {
@@ -132,7 +147,7 @@ func TestDocumentWatchHandlerRetriesFailedNotice(t *testing.T) {
 	// Later, the pending notice is sent, with the original change time, and
 	// the change time is not moved
 	handler.watcher.service = domain.NewDeadmansHandleServiceWithTime(testNow.Add(domain.ChangeNoticeRetryAfter))
-	if err := handler.Handle(context.Background(), testOrigin); err != nil {
+	if err := handler.Handle(context.Background(), testKey, testOrigin); err != nil {
 		t.Fatalf("Retry Handle failed: %v", err)
 	}
 	notices := changeNotices(emailSender)

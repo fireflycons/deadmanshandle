@@ -104,6 +104,15 @@ old directory, and run
 countdown are not reset (see
 [Updating the Configuration](#updating-the-configuration)).
 
+**Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
+settings into the stored configuration, as `documentKey`, and the Lambdas now
+require it. Add it to the stored configuration **before** `terraform apply`;
+the old Lambdas ignore it, but the new ones reject a configuration without
+it, and check-ins would fail. In `config.json`, move `documentKey` out of the
+`deployment` section to the top level (keep its value, or `document.pdf` if
+it had none), then upload it as in
+[Updating the Configuration](#updating-the-configuration).
+
 ## Pre-deployment Setup
 
 ### 1. SES Sender Domain and Production Access
@@ -163,13 +172,17 @@ Example configuration:
     "warnDays": 7,
     "timeout": "2030-01-01T00:00:00Z",
     "apiKey": "your-secure-random-api-key",
+    "documentKey": "document.pdf",
     "deployment": {
         "senderEmail": "noreply@example.com",
-        "documentBucket": "",
-        "documentKey": "document.pdf"
+        "documentBucket": ""
     }
 }
 ```
+
+`documentKey` is the S3 key of the document, default `document.pdf`.
+Recipients receive the attachment under the key's file name. Like the rest of
+the configuration, it can be changed after deployment without Terraform.
 
 The `deployment` section holds infrastructure settings. Terraform reads it on
 every plan, so changes to it take effect with `terraform apply`. It is not
@@ -179,17 +192,15 @@ stored in the parameter.
   in SES.
 - `documentBucket`: (Optional) Bucket name. Empty or absent for a generated
   name.
-- `documentKey`: (Optional) S3 key of the document, default `document.pdf`.
 
 Rules, checked by `terraform plan` and again by both Lambdas on every run:
 
-- `owner`, `apiKey` and every entry in `recipients` must be non-empty, and
-  there must be at least one recipient.
+- `owner`, `apiKey`, `documentKey` and every entry in `recipients` must be
+  non-empty, and there must be at least one recipient.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
-- `deployment.senderEmail` must be an email address, and
-  `deployment.documentKey`, if given, must be non-empty. The Lambdas do not
-  check these.
+- `deployment.senderEmail` must be an email address. The Lambdas do not
+  check it.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
   check-in then moves it to `resetDays` from now. It only seeds the DynamoDB
   state item when Terraform creates it. If it is already past then, the
@@ -302,7 +313,7 @@ The response holds the new deadline; see
 
 ### 2. Upload Document to S3
 
-The key must match `deployment.documentKey` (default `document.pdf`). Recipients receive
+The key must match `documentKey` (default `document.pdf`). Recipients receive
 the attachment under the key's file name. Until the document is uploaded, each
 daily run emails the owner that it is missing.
 
