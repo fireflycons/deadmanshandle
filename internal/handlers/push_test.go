@@ -29,7 +29,7 @@ func newScheduledPushTest(t *testing.T, state config.State) (*ScheduledEventHand
 	pushSender := mocks.NewMockPushSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
 	watcher := NewDocumentWatcher(stateStore, emailSender, pushSender, service)
-	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, pushSender, service, watcher, testParam, testBucket, testKey)
+	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, pushSender, service, watcher, testParam, testBucket)
 
 	return handler, emailSender, pushSender
 }

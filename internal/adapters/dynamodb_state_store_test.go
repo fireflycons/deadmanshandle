@@ -24,6 +24,7 @@ func TestUsedNames(t *testing.T) {
 		{"SET #e = :n #e = :p", []string{"#e"}},
 		{"SET #e = :n, #d = :d, #p = :true #e = :p", []string{"#d", "#e", "#p"}},
 		{"REMOVE #p #e = :e", []string{"#e", "#p"}},
+		{"REMOVE #k attribute_exists(#t)", []string{"#k", "#t"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.expression, func(t *testing.T) {

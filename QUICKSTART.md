@@ -79,11 +79,15 @@ request a minute, so quick repeated calls usually get HTTP 429; see
 
 ## 6. Upload Your Document
 
+From `deadmanshandle-<version>/`, with the `dmh` program for your computer
+(see [Make the Setup QR Code](DEPLOYMENT.md#2-make-the-setup-qr-code)):
+
 ```bash
-# From the terraform directory; the key must match deployment.documentKey (default document.pdf)
-aws s3 cp important-document.pdf \
-  "s3://$(terraform output -raw document_bucket_name)/document.pdf"
+./dmh/dmh-linux-amd64 document put important-document.pdf
 ```
+
+This uploads the document and makes it the one that is sent.
+`dmh config show` then shows the settings and the deadline.
 
 The handle cannot send anything until the document is uploaded, and you are
 emailed whenever it changes; see

@@ -10,7 +10,8 @@ const validJSON = `{
 	"recipients": ["a@example.com", "b@example.com"],
 	"resetDays": 30,
 	"warnDays": 7,
-	"apiKey": "key"
+	"apiKey": "key",
+	"documentKey": "docs/will.pdf"
 }`
 
 func TestParseConfigValid(t *testing.T) {
@@ -18,7 +19,7 @@ func TestParseConfigValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseConfig failed: %v", err)
 	}
-	if cfg.Owner != "owner@example.com" || len(cfg.Recipients) != 2 || cfg.ResetDays != 30 || cfg.WarnDays != 7 || cfg.APIKey != "key" {
+	if cfg.Owner != "owner@example.com" || len(cfg.Recipients) != 2 || cfg.ResetDays != 30 || cfg.WarnDays != 7 || cfg.APIKey != "key" || cfg.DocumentKey != "docs/will.pdf" {
 		t.Errorf("Unexpected config: %+v", cfg)
 	}
 }
@@ -37,6 +38,9 @@ func TestParseConfigInvalid(t *testing.T) {
 		{"negative warnDays", [2]string{`"warnDays": 7`, `"warnDays": -1`}, "warnDays must be"},
 		{"warnDays equals resetDays", [2]string{`"warnDays": 7`, `"warnDays": 30`}, "warnDays must be"},
 		{"empty apiKey", [2]string{`"key"`, `""`}, "apiKey is empty"},
+		{"blank documentKey", [2]string{`"docs/will.pdf"`, `" "`}, "documentKey is empty"},
+		{"missing documentKey", [2]string{`,
+	"documentKey": "docs/will.pdf"`, ``}, "documentKey is empty"},
 		{"bad JSON", [2]string{`{`, `[`}, "invalid character"},
 		{"empty data", [2]string{validJSON, ``}, "unexpected end of JSON input"},
 	}
@@ -63,7 +67,7 @@ func TestValidateReportsAllProblems(t *testing.T) {
 	if err == nil {
 		t.Fatal("Expected an error")
 	}
-	for _, want := range []string{"owner", "recipients", "resetDays", "apiKey"} {
+	for _, want := range []string{"owner", "recipients", "resetDays", "apiKey", "documentKey"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Expected error to mention %s, got %q", want, err)
 		}

@@ -67,7 +67,6 @@ resource "aws_lambda_function" "scheduled_handler" {
       STATE_TABLE_NAME              = aws_dynamodb_table.state.name
       SENDER_EMAIL                  = local.sender_email
       DOCUMENT_BUCKET               = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY                  = local.document_key
       PUSH_PLATFORM_APPLICATION_ARN = local.push_application_arn
     }
   }
@@ -99,7 +98,6 @@ resource "aws_lambda_function" "docwatch_handler" {
       STATE_TABLE_NAME              = aws_dynamodb_table.state.name
       SENDER_EMAIL                  = local.sender_email
       DOCUMENT_BUCKET               = aws_s3_bucket.document_bucket.id
-      DOCUMENT_KEY                  = local.document_key
       PUSH_PLATFORM_APPLICATION_ARN = local.push_application_arn
     }
   }

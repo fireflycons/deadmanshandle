@@ -3,7 +3,7 @@ package com.fireflycons.deadmanshandle.config
 import org.json.JSONObject
 
 /**
- * The Firebase project's client settings, from the setup QR code (qrconfig
+ * The Firebase project's client settings, from the setup QR code (dmh qr
  * -firebase), with which the app registers for push notifications. Each
  * deployment has its own project. They identify it but are not secrets.
  */

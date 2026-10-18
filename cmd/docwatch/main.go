@@ -73,7 +73,6 @@ func init() {
 		watcher,
 		os.Getenv("CONFIG_PARAMETER_NAME"),
 		os.Getenv("DOCUMENT_BUCKET"),
-		os.Getenv("DOCUMENT_KEY"),
 	)
 }
 
@@ -87,7 +86,7 @@ func HandleDocumentEvent(ctx context.Context, event events.CloudWatchEvent) erro
 	}
 	slog.Info("Document uploaded", "key", detail.Object.Key, "requester", detail.Requester, "sourceIP", detail.SourceIP)
 
-	err := documentWatchHandler.Handle(ctx, &domain.ChangeOrigin{
+	err := documentWatchHandler.Handle(ctx, detail.Object.Key, &domain.ChangeOrigin{
 		Requester: detail.Requester,
 		SourceIP:  detail.SourceIP,
 	})

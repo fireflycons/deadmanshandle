@@ -44,7 +44,7 @@ output "config_parameter_name" {
 }
 
 output "api_endpoint_parameter_name" {
-  description = "Parameter Store parameter holding the API endpoint, read by qrconfig -aws"
+  description = "Parameter Store parameter holding the API endpoint, read by dmh qr -aws"
   value       = aws_ssm_parameter.api_endpoint.name
 }
 

@@ -75,7 +75,7 @@ local:
 # and config.json, or with QRFLAGS=-aws the parameters in AWS. The PNG holds
 # the API key, so delete it after scanning.
 qrcode:
-	@go run ./cmd/qrconfig $(QRFLAGS)
+	@go run ./cmd/dmh qr $(QRFLAGS)
 
 android:
 	@$(gradlew) assembleRelease

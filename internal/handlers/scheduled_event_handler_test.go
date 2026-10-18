@@ -37,7 +37,7 @@ func newScheduledTest(t *testing.T, cfg *config.Config, state config.State) (*Sc
 	emailSender := mocks.NewMockEmailSender()
 	service := domain.NewDeadmansHandleServiceWithTime(testNow)
 	watcher := NewDocumentWatcher(stateStore, emailSender, nil, service)
-	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, nil, service, watcher, testParam, testBucket, testKey)
+	handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, nil, service, watcher, testParam, testBucket)
 
 	return handler, stateStore, emailSender
 }
@@ -54,11 +54,12 @@ func configJSON(t *testing.T, cfg *config.Config) []byte {
 
 func testConfig() *config.Config {
 	return &config.Config{
-		Owner:      "owner@example.com",
-		Recipients: []string{"recipient1@example.com", "recipient2@example.com"},
-		ResetDays:  30,
-		WarnDays:   7,
-		APIKey:     "test-key",
+		Owner:       "owner@example.com",
+		Recipients:  []string{"recipient1@example.com", "recipient2@example.com"},
+		ResetDays:   30,
+		WarnDays:    7,
+		APIKey:      "test-key",
+		DocumentKey: testKey,
 	}
 }
 

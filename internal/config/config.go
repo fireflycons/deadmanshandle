@@ -15,6 +15,8 @@ type Config struct {
 	ResetDays  int      `json:"resetDays"`
 	WarnDays   int      `json:"warnDays"`
 	APIKey     string   `json:"apiKey"`
+	// Object key of the document in the document bucket
+	DocumentKey string `json:"documentKey"`
 }
 
 // State is the handle's mutable state, kept in DynamoDB so that concurrent
@@ -81,6 +83,9 @@ func (c *Config) Validate() error {
 	}
 	if strings.TrimSpace(c.APIKey) == "" {
 		errs = append(errs, errors.New("apiKey is empty"))
+	}
+	if strings.TrimSpace(c.DocumentKey) == "" {
+		errs = append(errs, errors.New("documentKey is empty"))
 	}
 	if len(errs) > 0 {
 		return errors.Join(append([]error{errors.New("invalid config")}, errs...)...)

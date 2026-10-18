@@ -27,7 +27,9 @@ resource "aws_lambda_permission" "eventbridge_invoke" {
 }
 
 # Uploads of the document, which may be unauthorised changes. Deletions are
-# left to the daily run's missing-document check.
+# left to the daily run's missing-document check. The document's key is in the
+# config, where it can change without Terraform, so the rule matches every
+# upload to the bucket and the docwatch Lambda ignores other objects.
 resource "aws_cloudwatch_event_rule" "document_changed" {
   name        = "${var.application_name}-document-changed"
   description = "Uploads of the deadman's handle document"
@@ -37,7 +39,6 @@ resource "aws_cloudwatch_event_rule" "document_changed" {
     "detail-type" = ["Object Created"]
     detail = {
       bucket = { name = [aws_s3_bucket.document_bucket.id] }
-      object = { key = [local.document_key] }
     }
   })
 

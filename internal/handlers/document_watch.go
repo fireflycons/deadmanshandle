@@ -108,7 +108,6 @@ type DocumentWatchHandler struct {
 	watcher        *DocumentWatcher
 	paramName      string
 	documentBucket string
-	documentKey    string
 }
 
 // NewDocumentWatchHandler creates a new document watch handler
@@ -118,7 +117,6 @@ func NewDocumentWatchHandler(
 	watcher *DocumentWatcher,
 	parameterName string,
 	docBucket string,
-	docKey string,
 ) *DocumentWatchHandler {
 	return &DocumentWatchHandler{
 		configStore:    configStore,
@@ -126,13 +124,14 @@ func NewDocumentWatchHandler(
 		watcher:        watcher,
 		paramName:      parameterName,
 		documentBucket: docBucket,
-		documentKey:    docKey,
 	}
 }
 
 // Handle checks the document as it is now, not as the event describes it,
-// since events can arrive out of order.
-func (h *DocumentWatchHandler) Handle(ctx context.Context, origin *domain.ChangeOrigin) error {
+// since events can arrive out of order. key is the uploaded object's key:
+// the rule matches every upload to the bucket, since the document's key is
+// in the config, so uploads of other objects are ignored.
+func (h *DocumentWatchHandler) Handle(ctx context.Context, key string, origin *domain.ChangeOrigin) error {
 	configData, err := h.configStore.GetConfig(ctx, h.paramName)
 	if err != nil {
 		return err
@@ -142,8 +141,12 @@ func (h *DocumentWatchHandler) Handle(ctx context.Context, origin *domain.Change
 	if err != nil {
 		return err
 	}
+	if key != cfg.DocumentKey {
+		slog.Info("Upload ignored: not the document", "key", key, "documentKey", cfg.DocumentKey)
+		return nil
+	}
 
-	doc, err := lookupDocument(ctx, h.documentStore, h.documentBucket, h.documentKey)
+	doc, err := lookupDocument(ctx, h.documentStore, h.documentBucket, cfg.DocumentKey)
 	if err != nil {
 		return err
 	}

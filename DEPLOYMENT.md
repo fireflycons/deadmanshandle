@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.3.0   # the release you want
+VERSION=v0.4.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.3.0'   # the release you want
+$Version = 'v0.4.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.3.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.4.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,10 +69,10 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.3.0/
-├── app/deadmanshandle-v0.3.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v0.4.0/
+├── app/deadmanshandle-v0.4.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
-├── qrconfig/                         # makes the app's setup QR code, for each platform
+├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
@@ -103,6 +103,24 @@ old directory, and run
 `terraform/`. The plan shows the Lambdas updating; the configuration and the
 countdown are not reset (see
 [Updating the Configuration](#updating-the-configuration)).
+
+**Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
+settings into the stored configuration, as `documentKey`, and the Lambdas now
+require it. Add it to the stored configuration **before** `terraform apply`;
+the old Lambdas ignore it, but the new ones reject a configuration without
+it, and check-ins would fail. Use the key from your `config.json`'s
+`deployment` section, or `document.pdf` if it has none, with the new release's
+`dmh` (see [Make the Setup QR Code](#2-make-the-setup-qr-code) for the program
+for your computer):
+
+```bash
+./dmh/dmh-linux-amd64 config set -document-key document.pdf
+```
+
+Then move `documentKey` in `config.json` from the `deployment` section to the
+top level, where new deployments have it, and apply. Until the apply,
+`dmh config show` reports the parameters the new Terraform creates as not
+found, and the other commands that need them refuse to run.
 
 ## Pre-deployment Setup
 
@@ -163,13 +181,17 @@ Example configuration:
     "warnDays": 7,
     "timeout": "2030-01-01T00:00:00Z",
     "apiKey": "your-secure-random-api-key",
+    "documentKey": "document.pdf",
     "deployment": {
         "senderEmail": "noreply@example.com",
-        "documentBucket": "",
-        "documentKey": "document.pdf"
+        "documentBucket": ""
     }
 }
 ```
+
+`documentKey` is the S3 key of the document, default `document.pdf`.
+Recipients receive the attachment under the key's file name. Like the rest of
+the configuration, it can be changed after deployment without Terraform.
 
 The `deployment` section holds infrastructure settings. Terraform reads it on
 every plan, so changes to it take effect with `terraform apply`. It is not
@@ -179,23 +201,22 @@ stored in the parameter.
   in SES.
 - `documentBucket`: (Optional) Bucket name. Empty or absent for a generated
   name.
-- `documentKey`: (Optional) S3 key of the document, default `document.pdf`.
 
 Rules, checked by `terraform plan` and again by both Lambdas on every run:
 
-- `owner`, `apiKey` and every entry in `recipients` must be non-empty, and
-  there must be at least one recipient.
+- `owner`, `apiKey`, `documentKey` and every entry in `recipients` must be
+  non-empty, and there must be at least one recipient.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
-- `deployment.senderEmail` must be an email address, and
-  `deployment.documentKey`, if given, must be non-empty. The Lambdas do not
-  check these.
+- `deployment.senderEmail` must be an email address. The Lambdas do not
+  check it.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
   check-in then moves it to `resetDays` from now. It only seeds the DynamoDB
   state item when Terraform creates it. If it is already past then, the
   document is sent on the next daily run, so `terraform plan` warns about it.
 
-If the stored config breaks these rules (for example after a `put-parameter`),
+If the stored config breaks these rules (for example after an
+`aws ssm put-parameter`; `dmh config set` refuses to write an invalid one),
 check-ins fail with HTTP 500 and the daily run errors, which raises the
 `scheduled-errors` alarm. Nothing is sent until the config is fixed.
 
@@ -302,14 +323,31 @@ The response holds the new deadline; see
 
 ### 2. Upload Document to S3
 
-The key must match `deployment.documentKey` (default `document.pdf`). Recipients receive
-the attachment under the key's file name. Until the document is uploaded, each
-daily run emails the owner that it is missing.
+Upload it with `dmh document put` (see
+[Make the Setup QR Code](#2-make-the-setup-qr-code) for the program for your
+computer):
+
+```bash
+./dmh/dmh-linux-amd64 document put your-document.pdf
+```
+
+It uploads to a key named after the file, or to the one given with `-key`,
+and if that isn't the configured `documentKey`, it then sets `documentKey` to
+it. Recipients receive the attachment under the key's file name. A document
+already at the old key is left there; delete it if you no longer need it.
+`dmh document get` downloads the current document to the current directory.
+
+Until the document is uploaded, each daily run emails the owner that it is
+missing.
 
 The first upload is recorded silently. After that, the owner is emailed
 whenever the content changes, including your own updates. If the handle
 triggers within 24 hours of a change, delivery is held until the 24 hours are
-up; avoid replacing the document just before a deadline you might miss.
+up; avoid replacing the document just before a deadline you might miss. An
+upload under a new key may be reported by the next daily run rather than
+straight away.
+
+To upload with the AWS CLI instead, use the configured key:
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
@@ -397,7 +435,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.3.0.apk
+adb install -r app/deadmanshandle-v0.4.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is
@@ -407,43 +445,43 @@ replace the app, and uninstalling erases the app's config.
 
 ### 2. Make the Setup QR Code
 
-The release's `qrconfig` tool writes `checkin-qr.png`, a QR code holding the
-API endpoint and the API key, and with `-firebase` the push settings (see
-[Push Notifications](#5-push-notifications-optional)). It is in `qrconfig/`,
-built for each platform: pick the one for your computer.
+The release's `dmh` CLI writes `checkin-qr.png`, a QR code holding the API
+endpoint and the API key, and with `-firebase` the push settings (see
+[Push Notifications](#5-push-notifications-optional)). It is in `dmh/`, built
+for each platform: pick the one for your computer.
 
 | Computer | Program |
 | --- | --- |
-| Windows (most PCs) | `qrconfig-windows-amd64.exe` |
-| Windows on Arm | `qrconfig-windows-arm64.exe` |
-| Mac with Apple silicon (M1 or later) | `qrconfig-darwin-arm64` |
-| Mac with an Intel processor | `qrconfig-darwin-amd64` |
-| Linux | `qrconfig-linux-amd64`, or `qrconfig-linux-arm64` on Arm |
+| Windows (most PCs) | `dmh-windows-amd64.exe` |
+| Windows on Arm | `dmh-windows-arm64.exe` |
+| Mac with Apple silicon (M1 or later) | `dmh-darwin-arm64` |
+| Mac with an Intel processor | `dmh-darwin-amd64` |
+| Linux | `dmh-linux-amd64`, or `dmh-linux-arm64` on Arm |
 
-Run it from `deadmanshandle-<version>/`, where you deployed from. By default
-it reads the endpoint from `terraform/terraform.tfstate` and the key from
-`config.json`:
+Run `dmh qr` from `deadmanshandle-<version>/`, where you deployed from. By
+default it reads the endpoint from `terraform/terraform.tfstate` and the key
+from `config.json`:
 
 ```bash
-./qrconfig/qrconfig-linux-amd64
+./dmh/dmh-linux-amd64 qr
 ```
 
 ```powershell
-.\qrconfig\qrconfig-windows-amd64.exe
+.\dmh\dmh-windows-amd64.exe qr
 ```
 
 To read the values the Lambdas use from Parameter Store instead, with the AWS
 credentials in the environment (for example after changing the `apiKey`), add
 `-aws`. This works from any directory.
 
-`-out` and `-size` set the file and its width in pixels (default 1024),
-`-app` the Terraform `application_name` if it isn't `deadmanshandle`, and
-`-firebase` the Firebase project's `google-services.json`, for push. `-help`
-lists them.
+`-out` and `-size` set the file and its width in pixels (default 1024), and
+`-firebase` the Firebase project's `google-services.json`, for push.
+`dmh qr -help` lists them. If the Terraform `application_name` isn't
+`deadmanshandle`, give it before the command: `dmh -app <name> qr -aws`.
 
 The programs aren't signed. On a Mac, if it says the program can't be opened,
-run `xattr -d com.apple.quarantine qrconfig/qrconfig-darwin-*` once. If
-Windows blocks it, run `Unblock-File .\qrconfig\*.exe` in PowerShell.
+run `xattr -d com.apple.quarantine dmh/dmh-darwin-*` once. If Windows blocks
+it, run `Unblock-File .\dmh\*.exe` in PowerShell.
 
 From a clone of the repository, `make qrcode` runs it instead (add the flags
 with `QRFLAGS=`); see [DEVELOPMENT.md](DEVELOPMENT.md#the-setup-qr-code).
@@ -493,7 +531,7 @@ released app works with any deployment.
 4. **Make a QR code with the push settings**, adding `-firebase`:
 
    ```bash
-   ./qrconfig/qrconfig-linux-amd64 -aws -firebase google-services.json
+   ./dmh/dmh-linux-amd64 qr -aws -firebase google-services.json
    ```
 
    with the program for your computer (see
@@ -537,20 +575,38 @@ item, apart from the `deployment` section (see above). After that, Terraform
 ignores changes to both, so re-running `terraform apply` will not reset the
 configuration or the countdown.
 
-To update the configuration after deployment, write it directly. This no
-longer touches the timeout, which is in DynamoDB:
+To see or change the configuration after deployment, use `dmh config` (see
+[Make the Setup QR Code](#2-make-the-setup-qr-code) for the program for your
+computer). It uses the AWS credentials in the environment.
+
+`dmh config show` prints the settings, what Terraform fixed (the endpoint,
+bucket, state table and sender), and the state: the deadline, the delivery
+state, the document's last change and the push token. The API key and push
+token are shortened unless you add `-show-secrets`, and `-json` prints JSON.
+
+`dmh config set` changes the settings, with any of `-owner`,
+`-recipients a@example.com,b@example.com` (which replaces the list),
+`-reset-days`, `-warn-days`, `-api-key` and `-document-key`. It checks the
+result against the rules above and writes nothing if it breaks them. For
+example:
 
 ```bash
-# Update config.json
-vi config.json
-
-# Upload to Parameter Store
-aws ssm put-parameter \
-  --name /deadmanshandle/config \
-  --value file://config.json \
-  --overwrite \
-  --type SecureString
+./dmh/dmh-linux-amd64 config set -recipients executor@example.com,attorney@example.com -warn-days 5
 ```
+
+A new `-api-key` stops the app checking in until it scans a new QR code
+(`dmh qr -aws`). `dmh document put` sets `-document-key` for you when it
+uploads a document under a new name (see
+[Upload Document to S3](#2-upload-document-to-s3)).
+
+It can also change the state:
+
+- `-timeout 2030-01-01T00:00:00Z` sets the deadline to that time. Like a
+  check-in, it clears the delivery state, so a triggered handle starts over.
+  It refuses a time that has passed, which would send the document on the
+  next daily run, unless you add `-force`.
+- `-clear-push-token` forgets the app's push token, to stop pushes to a lost
+  phone. The next check-in from the app records a new one.
 
 The check-in Lambda caches the configuration for 5 minutes on a warm instance,
 so that a flood of requests does not cost an SSM and KMS call each. For up to
@@ -558,25 +614,20 @@ so that a flood of requests does not cost an SSM and KMS call each. For up to
 including the old `apiKey`. The daily run and the document watch always read
 the current configuration.
 
-The Lambdas ignore the `deployment` section and `timeout`. To change the
-`deployment` section, edit `config.json` and run `terraform apply`; the
-timeout is changed by checking in.
+To change the `deployment` section, edit `config.json` and run
+`terraform apply`.
 
 ### Checking in without the API
 
-If the API is unavailable, set the timeout in DynamoDB directly. This does
-what a check-in does, including clearing the delivery state:
+If the API is unavailable, or throttled by a flood of requests, check in with
+`dmh checkin` (see [Make the Setup QR Code](#2-make-the-setup-qr-code) for
+the program for your computer). It uses the AWS credentials in the
+environment rather than the API key, and does what a check-in does: the
+deadline moves to `resetDays` from now and the delivery state is cleared. The
+app's push token is kept.
 
 ```bash
-# A new timeout, resetDays from now (GNU date; on macOS: date -u -v+30d ...)
-TIMEOUT=$(date -u -d '+30 days' +%Y-%m-%dT%H:%M:%SZ)
-
-aws dynamodb update-item \
-  --table-name deadmanshandle-state \
-  --key '{"id":{"S":"handle"}}' \
-  --update-expression 'SET #t = :t REMOVE sentTo, ownerNotified ADD checkIns :one' \
-  --expression-attribute-names '{"#t":"timeout"}' \
-  --expression-attribute-values "{\":t\":{\"S\":\"$TIMEOUT\"},\":one\":{\"N\":\"1\"}}"
+./dmh/dmh-linux-amd64 checkin
 ```
 
 ## Cleanup
@@ -685,7 +736,7 @@ parameter, then run `terraform apply` so the subscription follows.
 - `deadmanshandle-api-rejected-requests`: the check-in API rejected 10 or more
   requests in 5 minutes (throttled, bad API key or unknown route). The
   throttle is shared by all callers, so a flood also blocks your check-ins.
-  While it lasts, check in with the AWS CLI (see
+  While it lasts, check in with `dmh checkin` (see
   [Checking in without the API](#checking-in-without-the-api)).
 
 With push notifications on, the `alarmpush` Lambda also pushes each alarm to

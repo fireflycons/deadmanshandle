@@ -162,6 +162,12 @@ func (s *DynamoDBStateStore) ClearDocumentChangePending(ctx context.Context, eta
 	})
 }
 
+// ClearPushToken removes the recorded push token, so that nothing is pushed
+// until the app checks in with a new one. Only the CLI uses it.
+func (s *DynamoDBStateStore) ClearPushToken(ctx context.Context) error {
+	return s.update(ctx, "REMOVE #k", "attribute_exists(#t)", nil)
+}
+
 // update applies an update expression to the state item, returning
 // ports.ErrConditionFailed if condition is false
 func (s *DynamoDBStateStore) update(ctx context.Context, expression, condition string, values map[string]types.AttributeValue) error {

@@ -16,6 +16,11 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
 - **Push Notifications** (optional): The owner's notices and the alarms are
   also pushed to the Android app, through SNS and Firebase Cloud Messaging; see
   [Push Notifications](DEPLOYMENT.md#5-push-notifications-optional)
+- **CLI**: `dmh` manages a deployment with your AWS credentials: it checks in
+  (`dmh checkin`), shows and changes the settings and state (`dmh config show`,
+  `dmh config set`), downloads and replaces the document (`dmh document get`,
+  `dmh document put`) and makes the app's setup QR code (`dmh qr`); see
+  [Updating the Configuration](DEPLOYMENT.md#updating-the-configuration)
 
 ## How It Works
 
@@ -57,8 +62,8 @@ kept, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md#architecture).
 
 You don't need to build anything: each
 [release](https://github.com/fireflycons/deadmanshandle/releases) has the
-pre-built Lambdas, the Terraform configuration, the example config and the
-Android app. See:
+pre-built Lambdas, the Terraform configuration, the example config, the
+Android app and the `dmh` CLI. See:
 
 - [QUICKSTART.md](QUICKSTART.md): up and running in about 10 minutes
 - [DEPLOYMENT.md](DEPLOYMENT.md): the full guide, including the configuration

@@ -37,11 +37,12 @@ func TestHTTPHandlerMissingAPIKey(t *testing.T) {
 func TestHTTPHandlerInvalidAPIKey(t *testing.T) {
 	configStore := mocks.NewMockConfigStore()
 	cfg := &config.Config{
-		Owner:      "owner@example.com",
-		Recipients: []string{"recipient@example.com"},
-		ResetDays:  30,
-		WarnDays:   7,
-		APIKey:     "correct-key",
+		Owner:       "owner@example.com",
+		Recipients:  []string{"recipient@example.com"},
+		ResetDays:   30,
+		WarnDays:    7,
+		APIKey:      "correct-key",
+		DocumentKey: "document.pdf",
 	}
 	configStore.Data["test-param"] = configJSON(t, cfg)
 
@@ -69,11 +70,12 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 	configStore := mocks.NewMockConfigStore()
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 	cfg := &config.Config{
-		Owner:      "owner@example.com",
-		Recipients: []string{"recipient@example.com"},
-		ResetDays:  30,
-		WarnDays:   7,
-		APIKey:     "test-key",
+		Owner:       "owner@example.com",
+		Recipients:  []string{"recipient@example.com"},
+		ResetDays:   30,
+		WarnDays:    7,
+		APIKey:      "test-key",
+		DocumentKey: "document.pdf",
 	}
 	configStore.Data["test-param"] = configJSON(t, cfg)
 
@@ -129,11 +131,12 @@ func TestHTTPHandlerSuccessfulCheckin(t *testing.T) {
 func TestHTTPHandlerErrorPaths(t *testing.T) {
 	now := time.Date(2024, 6, 1, 12, 0, 0, 0, time.UTC)
 	validCfg := &config.Config{
-		Owner:      "owner@example.com",
-		Recipients: []string{"recipient@example.com"},
-		ResetDays:  30,
-		WarnDays:   7,
-		APIKey:     "test-key",
+		Owner:       "owner@example.com",
+		Recipients:  []string{"recipient@example.com"},
+		ResetDays:   30,
+		WarnDays:    7,
+		APIKey:      "test-key",
+		DocumentKey: "document.pdf",
 	}
 	validData := configJSON(t, validCfg)
 

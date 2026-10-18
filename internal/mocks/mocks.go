@@ -1,9 +1,11 @@
 package mocks
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"io"
 	"slices"
 	"time"
 
@@ -25,6 +27,8 @@ var (
 type MockConfigStore struct {
 	Data   map[string][]byte
 	GetErr error // Returned by GetConfig when set
+	PutErr error // Returned by PutConfig when set
+	Puts   int   // Successful PutConfig calls
 }
 
 func NewMockConfigStore() *MockConfigStore {
@@ -38,6 +42,16 @@ func (m *MockConfigStore) GetConfig(ctx context.Context, parameterName string) (
 		return nil, m.GetErr
 	}
 	return m.Data[parameterName], nil
+}
+
+// PutConfig stores the value, as the CLI's config writer
+func (m *MockConfigStore) PutConfig(ctx context.Context, parameterName string, value []byte) error {
+	if m.PutErr != nil {
+		return m.PutErr
+	}
+	m.Data[parameterName] = value
+	m.Puts++
+	return nil
 }
 
 // MockStateStore is a mock implementation of StateStore, applying the same
@@ -118,6 +132,12 @@ func (m *MockStateStore) ClearDocumentChangePending(ctx context.Context, etag st
 	return nil
 }
 
+// ClearPushToken removes the push token, as the CLI's state editor
+func (m *MockStateStore) ClearPushToken(ctx context.Context) error {
+	m.State.PushToken = ""
+	return nil
+}
+
 func (m *MockStateStore) recordable(checkIns int64) error {
 	if m.BeforeUpdate != nil {
 		m.BeforeUpdate()
@@ -154,6 +174,25 @@ func (m *MockDocumentStore) DocumentETag(ctx context.Context, bucket, key string
 		return "", false, nil
 	}
 	return fmt.Sprintf("\"%x\"", sha256.Sum256(data)), true, nil
+}
+
+// Download opens the document, as the CLI's document transfer
+func (m *MockDocumentStore) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
+	data, ok := m.Documents[bucket][key]
+	if !ok {
+		return nil, fmt.Errorf("no document s3://%s/%s", bucket, key)
+	}
+	return io.NopCloser(bytes.NewReader(data)), nil
+}
+
+// Upload stores the document, as the CLI's document transfer
+func (m *MockDocumentStore) Upload(ctx context.Context, bucket, key string, body io.Reader) error {
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	m.SetDocument(bucket, key, data)
+	return nil
 }
 
 func (m *MockDocumentStore) SetDocument(bucket, key string, data []byte) {

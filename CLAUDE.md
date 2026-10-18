@@ -4,20 +4,26 @@
 
 A "dead man's handle": the owner checks in periodically, from an Android app
 or over the HTTP API. If they stop, a daily scheduled run emails a document
-from S3 to a list of recipients. Requirements: [spec.md](spec.md) (service)
-and [client-app.md](client-app.md) (app). User-facing docs: README,
-DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
+from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
+(including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 
 ## Layout
 
 - Go module `github.com/fireflycons/deadmanshandle`. Standard library plus the
   AWS SDK only; the one exception is `github.com/skip2/go-qrcode`, used only
-  by `cmd/qrconfig`.
+  by `cmd/dmh`.
 - Four Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
   `cmd/docwatch` and `cmd/alarmpush` (deployed only with push).
-  `cmd/qrconfig` is a CLI that writes the app's setup QR code
-  (`make qrcode`; `QRFLAGS=-aws` reads Parameter Store, `-firebase` adds the
-  push settings).
+  `cmd/dmh` is the CLI, working on AWS directly with the caller's
+  credentials (global `-app`, `-region` before the command):
+  - `checkin`; `config show` (`-show-secrets`, `-json`); `config set`
+    (settings, plus `-timeout`, which acts as a check-in, and
+    `-clear-push-token`); `document get`; `document put <file>` (uploads,
+    then points `documentKey` at it).
+  - `qr` writes the app's setup QR code (`make qrcode`; `QRFLAGS=-aws` reads
+    Parameter Store, `-firebase` adds the push settings).
+  - Each command looks up only the parameters it needs, so `config set`
+    works before an upgrade's `terraform apply`.
 - Hexagonal `internal/`:
   - `domain`: business rules and the clock (injectable).
   - `ports`: interfaces. Ports must not import domain.
@@ -26,6 +32,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
     `*domain.DeadmansHandleService` by design; ports are for the AWS side.
   - `mocks`: test doubles, with compile-time interface checks.
   - `config`: the config JSON type and `Config.Validate`.
+  - `cli`: the CLI's logic, with its own interfaces for the writes only it
+    makes (`PutConfig`, `ClearPushToken`, `Download`, `Upload`).
   - `qrconfig`: the QR payload, `{"v":1,"endpoint":"https://…","apiKey":"…"}`,
     with an optional `push` object (`projectId`, `appId`, `apiKey`,
     `senderId`). Older apps ignore it, so it didn't need a new `v`.
@@ -43,15 +51,20 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 ## Runtime behaviour (invariants to preserve)
 
 - **Config:** one SecureString SSM parameter (`/deadmanshandle/config`)
-  holding `owner`, `recipients`, `resetDays`, `warnDays` and `apiKey`.
+  holding `owner`, `recipients`, `resetDays`, `warnDays`, `apiKey` and
+  `documentKey`.
   - The Lambdas only read it, and validate it strictly.
   - The seed file (`config.json`) also has `timeout`, which seeds the state,
-    and a `deployment` section (`senderEmail`, `documentBucket`,
-    `documentKey`). Terraform reads `deployment` and passes it to the Lambdas
-    as env vars. Both are stripped from the stored parameter.
+    and a `deployment` section (`senderEmail`, `documentBucket`). Terraform
+    reads `deployment` and passes it to the Lambdas as env vars. Both are
+    stripped from the stored parameter. Older seed files have `documentKey`
+    in `deployment`; Terraform still accepts it there.
   - Terraform only creates the parameter and the state item
-    (`ignore_changes`). Later changes go through the AWS CLI (DEPLOYMENT.md).
-  - `/deadmanshandle/api-endpoint` holds the endpoint for `qrconfig -aws`.
+    (`ignore_changes`). Later changes go through `dmh config set`, which
+    validates the result before writing it (DEPLOYMENT.md).
+  - `/deadmanshandle/api-endpoint`, `document-bucket`, `state-table` and
+    `sender-email` are plain parameters that Terraform keeps up to date, so
+    the CLI can find the resources from the app name alone.
 - **State:** one DynamoDB item (`id = "handle"` in `deadmanshandle-state`):
   `timeout`, `checkIns`, `sentTo`, `ownerNotified`, `documentETag`,
   `documentChangedAt`, `documentChangePending` and `pushToken`.
@@ -82,6 +95,8 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
   - `GetObject` uses `IfMatch` with the checked ETag.
 - **Document changes:** S3 upload events reach the docwatch Lambda through
   EventBridge, and the daily run repeats the check.
+  - The rule matches every upload to the bucket, since the key is in the
+    config; docwatch ignores events for other keys.
   - The first ETag seen is recorded silently.
   - A new ETag sets `documentChangedAt` and `documentChangePending`, then
     emails the owner. A failed email stays pending and is retried 2 minutes
@@ -232,8 +247,8 @@ make android        # Android release APK (debug-signed locally)
 - **Release** (`release.yml`), on a merge to `master`: it creates
   `v<VERSION>` with `SHA256SUMS` and one zip,
   `deadmanshandle-v<VERSION>.zip`: Terraform, the example config, the Lambdas
-  in `bin/`, the signed APK in `app/` and `qrconfig` for each desktop
-  platform in `qrconfig/`, laid out ready to deploy.
+  in `bin/`, the signed APK in `app/` and `dmh` for each desktop platform
+  in `dmh/`, laid out ready to deploy.
   - The APK is signed from the repository secrets `ANDROID_KEYSTORE_BASE64`,
     `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, and the release fails
     without them.
@@ -296,7 +311,7 @@ Never write them into files in the repository.
 - A flood exhausts the shared throttle and blocks check-ins too. HTTP APIs
   have no WAF or per-key usage plans, and a REST API was declined. The
   `api-rejected-requests` alarm tells the owner, who can check in with
-  `aws dynamodb update-item`.
+  `dmh checkin`.
 - Overlapping runs, or a send whose record fails, can deliver a document
   twice; a duplicate is preferred to a recipient missing out. A check-in
   can't recall an email already being sent.
