@@ -1,9 +1,3 @@
-// Command qrconfig writes a PNG QR code that sets up the Android check-in
-// app. By default it reads the API endpoint from the Terraform state and the
-// API key from the config file. With -aws it reads the active values from
-// Parameter Store instead, using the credentials in the environment. With
-// -firebase it adds the Firebase project's client settings, from its
-// google-services.json, so the app can receive push notifications.
 package main
 
 import (
@@ -13,35 +7,43 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
 	"github.com/fireflycons/deadmanshandle/internal/qrconfig"
 	"github.com/skip2/go-qrcode"
 )
 
-func main() {
-	statePath := flag.String("state", "terraform/terraform.tfstate", "Terraform state file (not with -aws)")
-	configPath := flag.String("config", "config.json", "config file holding the apiKey (not with -aws)")
-	fromAWS := flag.Bool("aws", false, "read the endpoint and API key from Parameter Store")
-	app := flag.String("app", "deadmanshandle", "Terraform application_name, which prefixes the parameter names (with -aws only)")
-	firebase := flag.String("firebase", "", "the Firebase project's google-services.json, to turn on push notifications")
-	outPath := flag.String("out", "checkin-qr.png", "PNG file to write")
-	size := flag.Int("size", 1024, "width and height of the PNG in pixels")
-	flag.Parse()
+// runQR writes a PNG QR code that sets up the Android check-in app. By
+// default it reads the API endpoint from the Terraform state and the API key
+// from the config file. With -aws it reads the active values from Parameter
+// Store instead. With -firebase it adds the Firebase project's client
+// settings, from its google-services.json, so the app can receive push
+// notifications.
+func runQR(ctx context.Context, g globals, args []string) error {
+	fs := newFlagSet("qr", "[flags]")
+	statePath := fs.String("state", "terraform/terraform.tfstate", "Terraform state file (not with -aws)")
+	configPath := fs.String("config", "config.json", "config file holding the apiKey (not with -aws)")
+	fromAWS := fs.Bool("aws", false, "read the endpoint and API key from Parameter Store")
+	firebase := fs.String("firebase", "", "the Firebase project's google-services.json, to turn on push notifications")
+	outPath := fs.String("out", "checkin-qr.png", "PNG file to write")
+	size := fs.Int("size", 1024, "width and height of the PNG in pixels")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("qr: unexpected argument %q", fs.Arg(0))
+	}
 
 	set := map[string]bool{}
-	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) { set[f.Name] = true })
 
 	var endpoint, apiKey string
 	var err error
 	switch {
 	case *fromAWS && (set["state"] || set["config"]):
 		err = errors.New("-aws cannot be used with -state or -config")
-	case !*fromAWS && set["app"]:
-		err = errors.New("-app is only used with -aws")
 	case *fromAWS:
-		endpoint, apiKey, err = readAWS(context.Background(), *app)
+		endpoint, apiKey, err = readAWS(ctx, g)
 	default:
 		endpoint, apiKey, err = readFiles(*statePath, *configPath)
 	}
@@ -50,12 +52,12 @@ func main() {
 		push, err = readFirebase(*firebase)
 	}
 	if err == nil {
-		err = write(endpoint, apiKey, push, *outPath, *size)
+		err = writeQR(endpoint, apiKey, push, *outPath, *size)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "qrconfig:", err)
-		os.Exit(1)
+		return fmt.Errorf("qr: %w", err)
 	}
+	return nil
 }
 
 func readFiles(statePath, configPath string) (endpoint, apiKey string, err error) {
@@ -81,14 +83,14 @@ func readFiles(statePath, configPath string) (endpoint, apiKey string, err error
 
 // readAWS reads the parameters that Terraform creates in
 // terraform/parameter_store.tf
-func readAWS(ctx context.Context, app string) (endpoint, apiKey string, err error) {
-	awsCfg, err := config.LoadDefaultConfig(ctx)
+func readAWS(ctx context.Context, g globals) (endpoint, apiKey string, err error) {
+	awsCfg, err := g.awsConfig(ctx)
 	if err != nil {
 		return "", "", err
 	}
 	store := adapters.NewSSMConfigStore(ssm.NewFromConfig(awsCfg))
 
-	endpointParam := "/" + app + "/api-endpoint"
+	endpointParam := g.parameter("api-endpoint")
 	value, err := store.GetConfig(ctx, endpointParam)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", endpointParam, err)
@@ -98,7 +100,7 @@ func readAWS(ctx context.Context, app string) (endpoint, apiKey string, err erro
 		return "", "", fmt.Errorf("%s: %w", endpointParam, err)
 	}
 
-	configParam := "/" + app + "/config"
+	configParam := g.parameter("config")
 	value, err = store.GetConfig(ctx, configParam)
 	if err != nil {
 		return "", "", fmt.Errorf("%s: %w", configParam, err)
@@ -122,7 +124,7 @@ func readFirebase(path string) (*qrconfig.Push, error) {
 	return push, nil
 }
 
-func write(endpoint, apiKey string, push *qrconfig.Push, outPath string, size int) error {
+func writeQR(endpoint, apiKey string, push *qrconfig.Push, outPath string, size int) error {
 	payload, err := qrconfig.Encode(endpoint, apiKey, push)
 	if err != nil {
 		return err

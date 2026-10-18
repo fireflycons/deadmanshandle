@@ -4,7 +4,7 @@ import org.json.JSONException
 import org.json.JSONObject
 
 /**
- * The text of a setup QR code, as made by the qrconfig CLI
+ * The text of a setup QR code, as made by `dmh qr`
  * (internal/qrconfig): `{"v":1,"endpoint":"https://…","apiKey":"…"}`, with
  * an optional "push" object holding the [PushOptions].
  */
@@ -14,7 +14,7 @@ sealed interface QrPayload {
     /** Not JSON with a numeric "v": some other QR code */
     data object NotAConfig : QrPayload
 
-    /** A version this app doesn't know, from a newer qrconfig */
+    /** A version this app doesn't know, from a newer dmh */
     data class UnknownVersion(val version: Int) : QrPayload
 
     /** A known version, but the endpoint, API key or push settings are missing or invalid */

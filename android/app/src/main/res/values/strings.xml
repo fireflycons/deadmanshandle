@@ -3,7 +3,7 @@
     <string name="app_name">Deadman\'s Handle</string>
 
     <string name="config_title">Set up check-in</string>
-    <string name="config_explanation">Scan the setup QR code from qrconfig, or enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
+    <string name="config_explanation">Scan the setup QR code from dmh qr, or enter the API endpoint and API key of your deployment. The key is encrypted on this device; you confirm with your fingerprint or screen lock to save it.</string>
     <string name="scan_qr">Scan QR code</string>
     <string name="qr_not_config">That QR code is not a Deadman\'s Handle setup code.</string>
     <string name="qr_unknown_version">That setup code is version %1$d, which this app doesn\'t know. Update the app.</string>
@@ -38,7 +38,7 @@
     <string name="checkin_failed">Check-in failed: %1$s</string>
 
     <string name="push_from_qr">Notifications: on, from the setup code (Firebase project %1$s).</string>
-    <string name="push_none">Notifications: off. Scan a setup code made with qrconfig -firebase to get them.</string>
+    <string name="push_none">Notifications: off. Scan a setup code made with dmh qr -firebase to get them.</string>
     <string name="notifications_off">Notifications: off. The setup code had no notification settings.</string>
     <string name="notifications_blocked">Notifications are blocked. Allow them to hear about warnings and alarms here as well as by email.</string>
     <string name="notifications_pending">Notifications: check in to start them.</string>

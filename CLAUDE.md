@@ -12,10 +12,10 @@ DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 
 - Go module `github.com/fireflycons/deadmanshandle`. Standard library plus the
   AWS SDK only; the one exception is `github.com/skip2/go-qrcode`, used only
-  by `cmd/qrconfig`.
+  by `cmd/dmh`.
 - Four Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
   `cmd/docwatch` and `cmd/alarmpush` (deployed only with push).
-  `cmd/qrconfig` is a CLI that writes the app's setup QR code
+  `cmd/dmh` is the CLI. `dmh qr` writes the app's setup QR code
   (`make qrcode`; `QRFLAGS=-aws` reads Parameter Store, `-firebase` adds the
   push settings).
 - Hexagonal `internal/`:
@@ -238,8 +238,8 @@ make android        # Android release APK (debug-signed locally)
 - **Release** (`release.yml`), on a merge to `master`: it creates
   `v<VERSION>` with `SHA256SUMS` and one zip,
   `deadmanshandle-v<VERSION>.zip`: Terraform, the example config, the Lambdas
-  in `bin/`, the signed APK in `app/` and `qrconfig` for each desktop
-  platform in `qrconfig/`, laid out ready to deploy.
+  in `bin/`, the signed APK in `app/` and `dmh` for each desktop platform
+  in `dmh/`, laid out ready to deploy.
   - The APK is signed from the repository secrets `ANDROID_KEYSTORE_BASE64`,
     `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, and the release fails
     without them.

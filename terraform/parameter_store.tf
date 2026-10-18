@@ -66,7 +66,7 @@ resource "aws_ssm_parameter" "config" {
   })
 }
 
-# The endpoint, kept up to date by Terraform, so that `qrconfig -aws` can set up
+# The endpoint, kept up to date by Terraform, so that `dmh qr -aws` can set up
 # the Android app from AWS alone. Not secret, and not read by the Lambdas.
 resource "aws_ssm_parameter" "api_endpoint" {
   name  = "/${var.application_name}/api-endpoint"

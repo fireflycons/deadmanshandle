@@ -72,7 +72,7 @@ Terraform expects them:
 deadmanshandle-v0.3.0/
 ├── app/deadmanshandle-v0.3.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
-├── qrconfig/                         # makes the app's setup QR code, for each platform
+├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
@@ -418,43 +418,43 @@ replace the app, and uninstalling erases the app's config.
 
 ### 2. Make the Setup QR Code
 
-The release's `qrconfig` tool writes `checkin-qr.png`, a QR code holding the
-API endpoint and the API key, and with `-firebase` the push settings (see
-[Push Notifications](#5-push-notifications-optional)). It is in `qrconfig/`,
-built for each platform: pick the one for your computer.
+The release's `dmh` CLI writes `checkin-qr.png`, a QR code holding the API
+endpoint and the API key, and with `-firebase` the push settings (see
+[Push Notifications](#5-push-notifications-optional)). It is in `dmh/`, built
+for each platform: pick the one for your computer.
 
 | Computer | Program |
 | --- | --- |
-| Windows (most PCs) | `qrconfig-windows-amd64.exe` |
-| Windows on Arm | `qrconfig-windows-arm64.exe` |
-| Mac with Apple silicon (M1 or later) | `qrconfig-darwin-arm64` |
-| Mac with an Intel processor | `qrconfig-darwin-amd64` |
-| Linux | `qrconfig-linux-amd64`, or `qrconfig-linux-arm64` on Arm |
+| Windows (most PCs) | `dmh-windows-amd64.exe` |
+| Windows on Arm | `dmh-windows-arm64.exe` |
+| Mac with Apple silicon (M1 or later) | `dmh-darwin-arm64` |
+| Mac with an Intel processor | `dmh-darwin-amd64` |
+| Linux | `dmh-linux-amd64`, or `dmh-linux-arm64` on Arm |
 
-Run it from `deadmanshandle-<version>/`, where you deployed from. By default
-it reads the endpoint from `terraform/terraform.tfstate` and the key from
-`config.json`:
+Run `dmh qr` from `deadmanshandle-<version>/`, where you deployed from. By
+default it reads the endpoint from `terraform/terraform.tfstate` and the key
+from `config.json`:
 
 ```bash
-./qrconfig/qrconfig-linux-amd64
+./dmh/dmh-linux-amd64 qr
 ```
 
 ```powershell
-.\qrconfig\qrconfig-windows-amd64.exe
+.\dmh\dmh-windows-amd64.exe qr
 ```
 
 To read the values the Lambdas use from Parameter Store instead, with the AWS
 credentials in the environment (for example after changing the `apiKey`), add
 `-aws`. This works from any directory.
 
-`-out` and `-size` set the file and its width in pixels (default 1024),
-`-app` the Terraform `application_name` if it isn't `deadmanshandle`, and
-`-firebase` the Firebase project's `google-services.json`, for push. `-help`
-lists them.
+`-out` and `-size` set the file and its width in pixels (default 1024), and
+`-firebase` the Firebase project's `google-services.json`, for push.
+`dmh qr -help` lists them. If the Terraform `application_name` isn't
+`deadmanshandle`, give it before the command: `dmh -app <name> qr -aws`.
 
 The programs aren't signed. On a Mac, if it says the program can't be opened,
-run `xattr -d com.apple.quarantine qrconfig/qrconfig-darwin-*` once. If
-Windows blocks it, run `Unblock-File .\qrconfig\*.exe` in PowerShell.
+run `xattr -d com.apple.quarantine dmh/dmh-darwin-*` once. If Windows blocks
+it, run `Unblock-File .\dmh\*.exe` in PowerShell.
 
 From a clone of the repository, `make qrcode` runs it instead (add the flags
 with `QRFLAGS=`); see [DEVELOPMENT.md](DEVELOPMENT.md#the-setup-qr-code).
@@ -504,7 +504,7 @@ released app works with any deployment.
 4. **Make a QR code with the push settings**, adding `-firebase`:
 
    ```bash
-   ./qrconfig/qrconfig-linux-amd64 -aws -firebase google-services.json
+   ./dmh/dmh-linux-amd64 qr -aws -firebase google-services.json
    ```
 
    with the program for your computer (see

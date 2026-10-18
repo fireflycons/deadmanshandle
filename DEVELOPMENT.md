@@ -71,7 +71,7 @@ repository and the hexagonal architecture. Most development is in
 - Text files use LF line endings (enforced by `.gitattributes`).
 - Times are UTC. Emails show deadlines as `Monday 2 January 2006 at 15:04 MST`.
 - Use the standard library plus the AWS SDK only. The one exception is
-  `github.com/skip2/go-qrcode`, used only by `cmd/qrconfig`.
+  `github.com/skip2/go-qrcode`, used only by `cmd/dmh`.
 
 ## Building
 
@@ -120,7 +120,7 @@ which is fine for testing but can't update an installed release.
 
 ### The Setup QR Code
 
-`make qrcode` builds and runs `cmd/qrconfig` for this machine, writing the QR
+`make qrcode` builds and runs `dmh qr` for this machine, writing the QR
 code that sets up the app; see
 [Make the Setup QR Code](DEPLOYMENT.md#2-make-the-setup-qr-code).
 
@@ -548,7 +548,7 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   `LICENSE` (from `git archive`, so tracked files only, without
   `.tflint.hcl`), each Lambda's executable `bootstrap` (linux/arm64) in
   `bin/<function>/`, `app/deadmanshandle-v<VERSION>.apk`, signed with the
-  release key, and `qrconfig/qrconfig-<os>-<arch>`, the QR code CLI for
+  release key, and `dmh/dmh-<os>-<arch>`, the CLI for
   Windows, macOS and Linux on amd64 and arm64. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.

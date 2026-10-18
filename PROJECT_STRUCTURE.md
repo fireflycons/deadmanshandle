@@ -55,8 +55,9 @@ deadmanshandle/
 │   │   └── main.go                       # S3 upload (EventBridge) handler
 │   ├── alarmpush/
 │   │   └── main.go                       # Alarm topic (SNS) handler: pushes alarms
-│   └── qrconfig/
-│       └── main.go                       # CLI: QR code that sets up the Android app
+│   └── dmh/                              # CLI that manages the deployment
+│       ├── main.go                       # Global flags and command dispatch
+│       └── qr.go                         # dmh qr: QR code that sets up the Android app
 │
 ├── internal/                             # Application packages
 │   ├── adapters/                         # AWS service implementations
@@ -194,9 +195,10 @@ deadmanshandle/
 - **alarmpush**: Alarm topic (SNS) handler, deployed only with push
   - Pushes each CloudWatch alarm to the app
 
-- **qrconfig**: Command-line tool, not a Lambda
-  - Writes a PNG QR code that sets up the Android app (`make qrcode`); each
-    release includes it for Windows, macOS and Linux
+- **dmh**: Command-line tool, not a Lambda; each release includes it for
+  Windows, macOS and Linux
+  - `dmh qr` writes a PNG QR code that sets up the Android app
+    (`make qrcode`)
   - Reads the endpoint from the Terraform state and the API key from the
     config file, or both from Parameter Store with `-aws`
   - Adds the push settings from a Firebase `google-services.json` with
@@ -367,7 +369,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md): [Building](DEVELOPMENT.md#building),
 
 - `github.com/aws/aws-lambda-go`: Lambda runtime
 - `github.com/aws/aws-sdk-go-v2`: AWS SDK
-- `github.com/skip2/go-qrcode`: QR codes, in `cmd/qrconfig` only
+- `github.com/skip2/go-qrcode`: QR codes, in `cmd/dmh` only
 - Standard library: encoding/json, time, context, log/slog, mime, etc.
 
 The tools needed to build are in
