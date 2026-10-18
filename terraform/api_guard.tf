@@ -141,6 +141,23 @@ resource "aws_iam_role_policy" "lambda_api_guard" {
         Resource = "arn:aws:apigateway:${var.aws_region}::/apis/${aws_apigatewayv2_api.http_api.id}/stages/${aws_apigatewayv2_stage.http_api_stage.name}"
       },
       {
+        # The stage has access logging, and API Gateway checks the caller may
+        # set it up on any UpdateStage, even one that leaves it alone. These
+        # actions have no resource-level permissions.
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:PutResourcePolicy",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:CreateLogGroup",
+          "logs:DescribeResourcePolicies",
+          "logs:GetLogDelivery",
+          "logs:ListLogDeliveries"
+        ]
+        Resource = "*"
+      },
+      {
         # DescribeAlarms has no resource-level permissions
         Effect   = "Allow"
         Action   = "cloudwatch:DescribeAlarms"
