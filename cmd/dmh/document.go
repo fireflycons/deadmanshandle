@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/fireflycons/deadmanshandle/internal/cli"
+	"github.com/fireflycons/deadmanshandle/internal/doccrypt"
 	"github.com/fireflycons/deadmanshandle/internal/passphrase"
 )
 
@@ -118,9 +119,27 @@ func runPasswordShow(ctx context.Context, g globals, args []string) error {
 	return nil
 }
 
+// documents returns what the document commands work with, asking for the
+// password on the terminal when the stored one can't be used
+func (s *session) documents(ctx context.Context) (cli.Documents, error) {
+	docs, bucket, err := s.documentStore(ctx)
+	if err != nil {
+		return cli.Documents{}, err
+	}
+	return cli.Documents{
+		Store:             s.ssm,
+		ConfigParameter:   s.configParameter(),
+		PasswordParameter: s.passwordParameter(),
+		Transfer:          docs,
+		Bucket:            bucket,
+		Prompt:            readPassword,
+	}, nil
+}
+
 func runDocumentGet(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("document get", "[flags]")
 	force := fs.Bool("force", false, "replace a file of the same name")
+	raw := fs.Bool("raw", false, "save the document as stored, without decrypting it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -132,11 +151,11 @@ func runDocumentGet(ctx context.Context, g globals, args []string) error {
 	if err != nil {
 		return err
 	}
-	docs, bucket, err := s.documentStore(ctx)
+	d, err := s.documents(ctx)
 	if err != nil {
 		return fmt.Errorf("document get: %w", err)
 	}
-	file, err := cli.GetDocument(ctx, s.ssm, s.configParameter(), docs, bucket, ".", *force)
+	file, err := cli.GetDocument(ctx, d, ".", *force, *raw)
 	if err != nil {
 		return fmt.Errorf("document get: %w", err)
 	}
@@ -146,7 +165,8 @@ func runDocumentGet(ctx context.Context, g globals, args []string) error {
 
 func runDocumentPut(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("document put", "[flags] <file>")
-	key := fs.String("key", "", "S3 key to upload to (default: the file's name)")
+	key := fs.String("key", "", "S3 key to upload to (default: the file's name, plus "+doccrypt.Extension+" unless -plain)")
+	plain := fs.Bool("plain", false, "upload the file as it is, without encrypting it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -159,18 +179,22 @@ func runDocumentPut(ctx context.Context, g globals, args []string) error {
 	if err != nil {
 		return err
 	}
-	docs, bucket, err := s.documentStore(ctx)
+	d, err := s.documents(ctx)
 	if err != nil {
 		return fmt.Errorf("document put: %w", err)
 	}
-	result, err := cli.PutDocument(ctx, s.ssm, s.configParameter(), docs, bucket, fs.Arg(0), *key)
+	result, err := cli.PutDocument(ctx, d, fs.Arg(0), *key, *plain)
 	if err != nil {
 		return fmt.Errorf("document put: %w", err)
 	}
 
-	fmt.Printf("Uploaded %s to s3://%s/%s\n", fs.Arg(0), bucket, result.Key)
+	how := "Uploaded"
+	if result.Encrypted {
+		how = "Encrypted and uploaded"
+	}
+	fmt.Printf("%s %s to s3://%s/%s\n", how, fs.Arg(0), d.Bucket, result.Key)
 	if result.KeyChanged() {
-		fmt.Printf("The settings now name it as the document. The old one is still at s3://%s/%s;\n", bucket, result.PreviousKey)
+		fmt.Printf("The settings now name it as the document. The old one is still at s3://%s/%s;\n", d.Bucket, result.PreviousKey)
 		fmt.Println("delete it if you no longer need it. The change is reported by the next daily run")
 		fmt.Println("if the upload's own notice doesn't come first.")
 	}
