@@ -104,6 +104,11 @@ old directory, and run
 countdown are not reset (see
 [Updating the Configuration](#updating-the-configuration)).
 
+**Upgrading from 0.5.x:** each Lambda now has its own IAM role. The plan
+creates a `deadmanshandle-<function>-role` for each, moves the Lambdas to
+them, and destroys `deadmanshandle-lambda-role`; there is nothing to do by
+hand.
+
 **Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
 settings into the stored configuration, as `documentKey`, and the Lambdas now
 require it. Add it to the stored configuration **before** `terraform apply`;
@@ -278,7 +283,7 @@ Review the plan to ensure it will create the expected resources:
   records if `manage_dkim_dns_records` is true
 - The domain's DMARC record, if `dmarc_record` is set
 - SNS topic, owner email subscription and CloudWatch alarms
-- IAM role and policies
+- An IAM role for each Lambda, with only the permissions it uses
 - With `firebase_service_account_file` set: the SNS platform application for
   push, the `alarmpush` Lambda subscribed to the alarm topic, and the push
   alarms
@@ -708,11 +713,12 @@ Common issues:
 
 ### Permission Denied Errors
 
-Verify IAM role policies:
+Verify the IAM policy of the Lambda that was refused (`http`, `scheduled`,
+`docwatch`, `apiguard` or `alarmpush`):
 
 ```bash
-aws iam get-role-policy --role-name deadmanshandle-lambda-role \
-  --policy-name deadmanshandle-lambda-policy
+aws iam get-role-policy --role-name deadmanshandle-scheduled-role \
+  --policy-name deadmanshandle-scheduled-policy
 ```
 
 ### SES Email Not Sending

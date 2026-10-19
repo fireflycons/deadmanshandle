@@ -19,35 +19,6 @@ resource "aws_sns_platform_application" "fcm" {
   platform_credential = file(var.firebase_service_account_file)
 }
 
-resource "aws_iam_role_policy" "lambda_push" {
-  count = local.push_enabled ? 1 : 0
-
-  name = "${var.application_name}-lambda-push"
-  role = aws_iam_role.lambda_role.id
-
-  # Endpoints are created on demand, one per token, under the application.
-  # SNS authorises some endpoint actions against the application's ARN (as
-  # GetEndpointAttributes does) and others against the endpoint's, so both
-  # are granted.
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "sns:CreatePlatformEndpoint",
-          "sns:GetEndpointAttributes",
-          "sns:Publish"
-        ]
-        Resource = [
-          aws_sns_platform_application.fcm[0].arn,
-          "arn:aws:sns:${var.aws_region}:${data.aws_caller_identity.current.account_id}:endpoint/GCM/${aws_sns_platform_application.fcm[0].name}/*"
-        ]
-      }
-    ]
-  })
-}
-
 # Pushes the alarms. The alarms topic still emails them to the owner.
 resource "aws_cloudwatch_log_group" "alarmpush_handler" {
   count = local.push_enabled ? 1 : 0
@@ -63,7 +34,7 @@ resource "aws_lambda_function" "alarmpush_handler" {
 
   filename      = data.archive_file.alarmpush_lambda[0].output_path
   function_name = "${var.application_name}-alarmpush"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.lambda["alarmpush"].arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["arm64"] # must match GOARCH in the Makefile

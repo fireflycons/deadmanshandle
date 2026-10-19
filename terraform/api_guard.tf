@@ -25,7 +25,7 @@ resource "aws_lambda_function" "apiguard_handler" {
 
   filename      = data.archive_file.apiguard_lambda[0].output_path
   function_name = "${var.application_name}-apiguard"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.lambda["apiguard"].arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["arm64"] # must match GOARCH in the Makefile
@@ -123,53 +123,45 @@ resource "aws_lambda_permission" "eventbridge_invoke_apiguard" {
   source_arn    = aws_cloudwatch_event_rule.api_guard_check[0].arn
 }
 
-# On the shared Lambda role, which already has the config, state, SES and
-# push permissions the notices need
-resource "aws_iam_role_policy" "lambda_api_guard" {
-  count = local.api_guard_count
-
-  name = "${var.application_name}-lambda-api-guard"
-  role = aws_iam_role.lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        # GetStage and UpdateStage on the check-in API's stage
-        Effect   = "Allow"
-        Action   = ["apigateway:GET", "apigateway:PATCH"]
-        Resource = "arn:aws:apigateway:${var.aws_region}::/apis/${aws_apigatewayv2_api.http_api.id}/stages/${aws_apigatewayv2_stage.http_api_stage.name}"
-      },
-      {
-        # The stage has access logging, and API Gateway checks the caller may
-        # set it up on any UpdateStage, even one that leaves it alone. These
-        # actions have no resource-level permissions.
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogDelivery",
-          "logs:PutResourcePolicy",
-          "logs:UpdateLogDelivery",
-          "logs:DeleteLogDelivery",
-          "logs:CreateLogGroup",
-          "logs:DescribeResourcePolicies",
-          "logs:GetLogDelivery",
-          "logs:ListLogDeliveries"
-        ]
-        Resource = "*"
-      },
-      {
-        # DescribeAlarms has no resource-level permissions
-        Effect   = "Allow"
-        Action   = "cloudwatch:DescribeAlarms"
-        Resource = "*"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["events:DescribeRule", "events:EnableRule", "events:DisableRule"]
-        Resource = aws_cloudwatch_event_rule.api_guard_check[0].arn
-      }
-    ]
-  })
+# The guard's own permissions, added in iam.tf to those its notices need
+locals {
+  api_guard_statements = [
+    {
+      # GetStage and UpdateStage on the check-in API's stage
+      Effect   = "Allow"
+      Action   = ["apigateway:GET", "apigateway:PATCH"]
+      Resource = "arn:aws:apigateway:${var.aws_region}::/apis/${aws_apigatewayv2_api.http_api.id}/stages/${aws_apigatewayv2_stage.http_api_stage.name}"
+    },
+    {
+      # The stage has access logging, and API Gateway checks the caller may
+      # set it up on any UpdateStage, even one that leaves it alone. These
+      # actions have no resource-level permissions.
+      Effect = "Allow"
+      Action = [
+        "logs:CreateLogDelivery",
+        "logs:PutResourcePolicy",
+        "logs:UpdateLogDelivery",
+        "logs:DeleteLogDelivery",
+        "logs:CreateLogGroup",
+        "logs:DescribeResourcePolicies",
+        "logs:GetLogDelivery",
+        "logs:ListLogDeliveries"
+      ]
+      Resource = "*"
+    },
+    {
+      # DescribeAlarms has no resource-level permissions
+      Effect   = "Allow"
+      Action   = "cloudwatch:DescribeAlarms"
+      Resource = "*"
+    },
+    {
+      # Null when the guard is off, and then unused
+      Effect   = "Allow"
+      Action   = ["events:DescribeRule", "events:EnableRule", "events:DisableRule"]
+      Resource = one(aws_cloudwatch_event_rule.api_guard_check[*].arn)
+    }
+  ]
 }
 
 # The guard failed: it could not close or reopen the API, or tell the owner.

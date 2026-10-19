@@ -140,7 +140,7 @@ deadmanshandle/
 │   ├── provider.tf                       # AWS provider and Terraform version
 │   ├── variables.tf                      # Input variables
 │   ├── data.tf                           # Data sources
-│   ├── iam.tf                            # IAM role and policies
+│   ├── iam.tf                            # IAM roles, one per Lambda
 │   ├── lambda.tf                         # Lambda functions and log groups
 │   ├── api_gateway.tf                    # HTTP API Gateway
 │   ├── s3.tf                             # S3 bucket configuration
@@ -334,7 +334,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md#android-app) for building it.
 ### `terraform/` - Infrastructure as Code
 Terraform files defining AWS resources:
 - **provider.tf**: AWS provider configuration
-- **iam.tf**: Lambda execution role and policies
+- **iam.tf**: One execution role per Lambda, each with only its permissions
 - **lambda.tf**: Lambda function definitions, archiving and log groups
 - **api_gateway.tf**: HTTP API and routes
 - **s3.tf**: S3 bucket with security settings

@@ -403,8 +403,9 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
        newService ports.NewService
    }
    ```
-   Create the adapter in `cmd/*/main.go`, and grant the Lambda's IAM role the
-   permissions it needs in `terraform/iam.tf`.
+   Create the adapter in `cmd/*/main.go`, and add the permissions it needs
+   to that Lambda's entry in `lambda_policies` in `terraform/iam.tf`. Each
+   Lambda has its own role.
 
 ### Adding a New Handler
 
@@ -436,6 +437,8 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
 
 5. **Build and deploy it**: add it to the `build` target in the Makefile, and
    add the function, its archive and its log group in `terraform/lambda.tf`.
+   Give it a role by adding it to `lambda_functions` and `lambda_policies` in
+   `terraform/iam.tf`, and use `aws_iam_role.lambda["<name>"].arn`.
 
 ### Modifying Configuration
 
