@@ -9,7 +9,8 @@ The diagram is drawn by `tools/architecture_diagram.py`; see
 
 ### AWS Services Used
 
-- **AWS Lambda**: Compute (3 functions, 4 with push)
+- **AWS Lambda**: Compute (3 functions, plus the flood guard, on by
+  default, and alarmpush with push)
 - **API Gateway**: HTTP endpoint for check-ins
 - **EventBridge**: Scheduled daily checks, and S3 upload events
 - **Parameter Store**: Configuration storage
@@ -359,7 +360,8 @@ makes the decisions; the handlers carry them out through the ports:
 ┌─────────────────────────────────────┐
 │       Lambda Entry Points           │
 │  (cmd/http, cmd/scheduled,          │
-│   cmd/docwatch)                     │
+│   cmd/docwatch, cmd/alarmpush,      │
+│   cmd/apiguard)                     │
 └──────────────┬──────────────────────┘
                │ wire up
 ┌──────────────▼──────────────────────┐

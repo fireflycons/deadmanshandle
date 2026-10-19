@@ -207,7 +207,7 @@ stored in the parameter.
 - `documentBucket`: (Optional) Bucket name. Empty or absent for a generated
   name.
 
-Rules, checked by `terraform plan` and again by both Lambdas on every run:
+Rules, checked by `terraform plan` and again by the Lambdas on every run:
 
 - `owner`, `apiKey`, `documentKey` and every entry in `recipients` must be
   non-empty, and there must be at least one recipient.
@@ -389,7 +389,7 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --follow
 aws logs tail /aws/apigateway/deadmanshandle --follow
 ```
 
-Both Lambdas log JSON lines: each check-in (accepted or rejected, with the
+The Lambdas log JSON lines: each check-in (accepted or rejected, with the
 caller's IP), each email sent, and every failure with its error. The API key
 and the document are never logged. Lambda logs are kept for 14 days and API
 Gateway logs for 7.

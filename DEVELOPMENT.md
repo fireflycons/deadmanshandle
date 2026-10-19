@@ -234,7 +234,7 @@ if err := h.emailSender.SendEmail(ctx, to, subject, body, attachments); err != n
 ```
 
 #### Logging
-Both Lambdas log JSON lines with `log/slog` (set up in `cmd/*/main.go`), which
+The Lambdas log JSON lines with `log/slog` (set up in `cmd/*/main.go`), which
 Lambda sends to CloudWatch Logs. Log events and errors with key/value
 attributes:
 
@@ -462,8 +462,9 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
 
 AWS clients are created once in `init()` in `cmd/*/main.go` and reused on warm
 starts. Anything that must be current on each invocation (such as the clock)
-is read per call instead. Both functions run with 256 MB; the work is a few
-AWS calls a day, so there is little to tune.
+is read per call instead. The HTTP, scheduled and docwatch functions run with
+256 MB, and alarmpush and apiguard with 128 MB; the work is a few AWS calls a
+day, so there is little to tune.
 
 ## Security Best Practices
 
