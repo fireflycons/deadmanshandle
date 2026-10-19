@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.5.0   # the release you want
+VERSION=v0.6.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.5.0'   # the release you want
+$Version = 'v0.6.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.5.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.6.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,8 +69,8 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.5.0/
-├── app/deadmanshandle-v0.5.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v0.6.0/
+├── app/deadmanshandle-v0.6.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
@@ -451,7 +451,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.5.0.apk
+adb install -r app/deadmanshandle-v0.6.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is
