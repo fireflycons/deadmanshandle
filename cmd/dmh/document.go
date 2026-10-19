@@ -8,6 +8,7 @@ import (
 	"github.com/fireflycons/deadmanshandle/internal/cli"
 	"github.com/fireflycons/deadmanshandle/internal/doccrypt"
 	"github.com/fireflycons/deadmanshandle/internal/passphrase"
+	"github.com/fireflycons/deadmanshandle/internal/prompt"
 )
 
 var documentCommands = map[string]command{
@@ -32,7 +33,7 @@ func runDocumentPassword(ctx context.Context, g globals, args []string) error {
 func runPasswordSet(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("document password set", "[flags]")
 	words := fs.Int("words", passphrase.DefaultWords, "number of words in the generated passphrase")
-	prompt := fs.Bool("prompt", false, fmt.Sprintf("type your own password (at least %d characters) instead", cli.MinPasswordLength))
+	choose := fs.Bool("prompt", false, fmt.Sprintf("type your own password instead (at least %d characters, no accented letters)", cli.MinPasswordLength))
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -41,12 +42,12 @@ func runPasswordSet(ctx context.Context, g globals, args []string) error {
 	}
 
 	var password string
-	if *prompt {
-		first, err := readPassword("New password: ")
+	if *choose {
+		first, err := prompt.Password("New password: ")
 		if err != nil {
 			return err
 		}
-		again, err := readPassword("Again: ")
+		again, err := prompt.Password("Again: ")
 		if err != nil {
 			return err
 		}
@@ -132,7 +133,7 @@ func (s *session) documents(ctx context.Context) (cli.Documents, error) {
 		PasswordParameter: s.passwordParameter(),
 		Transfer:          docs,
 		Bucket:            bucket,
-		Prompt:            readPassword,
+		Prompt:            prompt.Password,
 	}, nil
 }
 

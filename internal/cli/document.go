@@ -229,8 +229,8 @@ func putPassword(ctx context.Context, d Documents) (string, error) {
 	if first != again {
 		return "", errors.New("the passwords don't match")
 	}
-	if len(first) < MinPasswordLength {
-		return "", fmt.Errorf("the password must be at least %d characters", MinPasswordLength)
+	if err := CheckPassword(first); err != nil {
+		return "", err
 	}
 	return first, nil
 }

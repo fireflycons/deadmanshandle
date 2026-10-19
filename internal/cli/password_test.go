@@ -143,3 +143,17 @@ func TestDocumentPasswordStatus(t *testing.T) {
 		t.Errorf("Expected the password shown, got %q", got)
 	}
 }
+
+func TestCheckPassword(t *testing.T) {
+	for password, ok := range map[string]bool{
+		"acid-corn-acre-zone":    true,
+		"Long enough, with ~!@#": true,
+		"short":                  false,
+		"correct-horse-stäple":   false,
+		"tab\tinside-password":   false,
+	} {
+		if err := CheckPassword(password); (err == nil) != ok {
+			t.Errorf("CheckPassword(%q) = %v, want ok %v", password, err, ok)
+		}
+	}
+}

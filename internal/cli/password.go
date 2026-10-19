@@ -14,6 +14,22 @@ import (
 // MinPasswordLength is the shortest document password the owner may choose
 const MinPasswordLength = 12
 
+// CheckPassword applies the rules for a document password the owner
+// chooses: long enough, and printable ASCII, since a Windows console may
+// pass other characters to the program in its own code page, and the
+// password then wouldn't match
+func CheckPassword(password string) error {
+	if len(password) < MinPasswordLength {
+		return fmt.Errorf("the password must be at least %d characters", MinPasswordLength)
+	}
+	for _, r := range password {
+		if r < ' ' || r > '~' {
+			return errors.New("the password may only use letters, digits, spaces and the punctuation on an English keyboard (no accented letters), so that it can be typed anywhere")
+		}
+	}
+	return nil
+}
+
 // ReadDocumentPassword returns the document password stored in
 // parameterName, a SecureString that only the CLI uses; found is false if
 // none is stored
@@ -54,8 +70,8 @@ type PasswordChange struct {
 // first, so the stored password always opens it; if the password then can't
 // be saved, the error says so.
 func SetDocumentPassword(ctx context.Context, store ConfigReadWriter, passwordParameter, configParameter string, docs DocumentTransfer, bucket, password string) (PasswordChange, error) {
-	if len(password) < MinPasswordLength {
-		return PasswordChange{}, fmt.Errorf("the password must be at least %d characters", MinPasswordLength)
+	if err := CheckPassword(password); err != nil {
+		return PasswordChange{}, err
 	}
 	cfg, err := ReadConfig(ctx, store, configParameter)
 	if err != nil {
