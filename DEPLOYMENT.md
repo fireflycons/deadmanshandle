@@ -71,14 +71,15 @@ Terraform expects them:
 ```
 deadmanshandle-v0.6.0/
 ├── app/deadmanshandle-v0.6.0.apk     # the Android app; see Setting Up the Android App
-├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
+├── bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
 ```
 
-`alarmpush` is deployed only with push notifications. On Windows the
+`alarmpush` is deployed only with push notifications, and `apiguard` only
+with the flood guard (on by default). On Windows the
 `bootstrap` files lose their executable bit; that doesn't matter, because
 Terraform sets it when it zips them for Lambda.
 
