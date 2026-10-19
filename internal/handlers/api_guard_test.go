@@ -79,7 +79,7 @@ func TestAPIGuardIgnoresAlarms(t *testing.T) {
 	}{
 		{"another alarm", openThrottle, `{"AlarmName":"deadmanshandle-scheduled-errors","NewStateValue":"ALARM"}`},
 		{"back to OK", openThrottle, `{"AlarmName":"` + guardAlarm + `","NewStateValue":"OK"}`},
-		{"already closed, by hand or by the guard", ports.Throttle{}, `{"AlarmName":"` + guardAlarm + `","NewStateValue":"ALARM"}`},
+		{"already closed by hand", ports.Throttle{}, `{"AlarmName":"` + guardAlarm + `","NewStateValue":"ALARM"}`},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -107,6 +107,20 @@ func TestAPIGuardCloseNoticeFails(t *testing.T) {
 	}
 	if !g.gate.Current.Closed() || !g.schedule.Enabled {
 		t.Error("Expected the API closed and checked despite the failed notice")
+	}
+
+	// Lambda's retry finds the API closed by the guard and sends the notice
+	delete(g.emails.FailFor, "owner@example.com")
+	sets := g.gate.Sets
+	if err := g.handler.HandleAlarm(context.Background(), alarmMessage(t, guardAlarm, "ALARM")); err != nil {
+		t.Fatalf("Retry failed: %v", err)
+	}
+	if g.gate.Sets != sets || !g.gate.Current.Closed() || !g.schedule.Enabled {
+		t.Errorf("Expected the API left closed and checked, got %d more throttle changes, checking %v",
+			g.gate.Sets-sets, g.schedule.Enabled)
+	}
+	if len(g.emails.SentEmails) != 1 || !strings.Contains(g.emails.SentEmails[0].Body, "checked every 15 minutes") {
+		t.Errorf("Expected the closed notice on the retry, got %+v", g.emails.SentEmails)
 	}
 }
 

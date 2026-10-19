@@ -650,7 +650,9 @@ the API and emails you (and pushes, with push on) that it has. Requests
 refused while it is closed still count, so the alarm stays in ALARM for as
 long as the flood goes on. Every `api_guard_check_minutes` (15 by default),
 the guard checks the alarm, and once it is back to OK, which takes 5 to 10
-minutes after the flood stops, reopens the API and tells you so.
+minutes after the flood stops, reopens the API and tells you so. If the
+closed notice fails, Lambda's retry sends it again; a failed reopened notice
+isn't retried, but `apiguard-errors` tells you.
 
 - `dmh api check-interval <minutes>` changes how often it checks, from 1 to
   1440 minutes, even while it has the API closed.

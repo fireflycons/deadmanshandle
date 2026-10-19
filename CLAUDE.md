@@ -133,7 +133,9 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
   to the alarm topic.
   - On `api-rejected-requests` entering ALARM, with the API open, it enables
     the check rule, closes the API, and emails and pushes an `api` notice.
-    It ignores other alarms and an API that's already closed.
+    It ignores other alarms and an API closed by hand. With the API closed
+    and the check rule running, the guard closed it, so it sends the notice
+    again: a retry after a failed notice gets it through.
   - The check rule (`rate(N minutes)`) is created disabled; Terraform
     ignores its state and rate after that, so `dmh api check-interval`
     changes the rate. Each check keeps the API closed while the alarm is in
@@ -340,6 +342,8 @@ Never write them into files in the repository.
   after a flood stops, plus up to one check interval.
 - `dmh api enable` during a flood leaves the API open: the alarm is already
   in ALARM, and SNS notifies only on a change of state.
+- A failed reopened notice isn't retried: the retry finds the API open.
+  `apiguard-errors` tells the owner.
 - Overlapping runs, or a send whose record fails, can deliver a document
   twice; a duplicate is preferred to a recipient missing out. A check-in
   can't recall an email already being sent.
