@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -103,15 +103,13 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// isEmailAddress reports whether s is a bare address, such as
-// someone@example.com, with no display name or surrounding space, since it
-// is passed to SES as it is. The domain must contain a dot, as the
-// precondition in terraform/parameter_store.tf requires.
+// emailAddressPattern matches a bare address, such as someone@example.com,
+// which is passed to SES as it is: no display name or spaces, a local part of
+// dot-separated words and a domain with at least one dot. It must stay the
+// same as email_address_pattern in terraform/parameter_store.tf, so that a
+// seed file that passes terraform plan passes here too; a test checks this.
+var emailAddressPattern = regexp.MustCompile("^[A-Za-z0-9_%+'-]+([.][A-Za-z0-9_%+'-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$")
+
 func isEmailAddress(s string) bool {
-	addr, err := mail.ParseAddress(s)
-	if err != nil || addr.Name != "" || addr.Address != s {
-		return false
-	}
-	at := strings.LastIndex(s, "@")
-	return strings.Contains(s[at+1:], ".")
+	return emailAddressPattern.MatchString(s)
 }

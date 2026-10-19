@@ -217,10 +217,12 @@ Rules, checked by `terraform plan` and again by the Lambdas on every run:
   non-empty, and there must be at least one recipient.
 - `owner` and every recipient must be a bare email address, such as
   `someone@example.com`: no display name or spaces, and a dot in the domain.
+  The part before the `@` may use letters, digits and `. _ % + ' -`, the
+  domain letters, digits, `-` and dots.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
-- `deployment.senderEmail` must be an email address. The Lambdas do not
-  check it.
+- `deployment.senderEmail` must be an email address, by the same rule. The
+  Lambdas do not check it.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
   check-in then moves it to `resetDays` from now. It only seeds the DynamoDB
   state item when Terraform creates it. If it is already past then, the

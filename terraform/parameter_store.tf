@@ -15,8 +15,10 @@ locals {
   # Older seed files have it in the deployment section.
   document_key = try(local.seed_config.documentKey, local.deployment.documentKey, "document.pdf")
 
-  # A bare address with a dot in the domain; Config.Validate checks more
-  email_address_pattern = "^[^@ ]+@[^@ ]+[.][^@ ]+$"
+  # A bare address, with a dot in the domain. Config.Validate uses the same
+  # pattern (emailAddressPattern in internal/config), and a test checks they
+  # match.
+  email_address_pattern = "^[A-Za-z0-9_%+'-]+([.][A-Za-z0-9_%+'-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$"
 }
 
 resource "aws_ssm_parameter" "config" {

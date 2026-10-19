@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -24,6 +25,25 @@ func TestParseConfigValid(t *testing.T) {
 	}
 }
 
+func TestParseConfigUnusualAddress(t *testing.T) {
+	data := strings.Replace(validJSON, `"b@example.com"`, `"first.o'brien+tag@mail.example-site.co.uk"`, 1)
+	if _, err := ParseConfig([]byte(data)); err != nil {
+		t.Errorf("Expected the address accepted, got %v", err)
+	}
+}
+
+// The seed file's preconditions must accept no address the Lambdas reject
+func TestEmailAddressPatternMatchesTerraform(t *testing.T) {
+	tf, err := os.ReadFile("../../terraform/parameter_store.tf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `email_address_pattern = "` + emailAddressPattern.String() + `"`
+	if !strings.Contains(string(tf), want) {
+		t.Errorf("terraform/parameter_store.tf does not contain %s", want)
+	}
+}
+
 func TestParseConfigInvalid(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -39,6 +59,10 @@ func TestParseConfigInvalid(t *testing.T) {
 		{"owner with spaces", [2]string{`"owner@example.com"`, `" owner@example.com"`}, "not an email address"},
 		{"recipient domain without a dot", [2]string{`"b@example.com"`, `"b@example"`}, `recipient "b@example" is not an email address`},
 		{"recipient with two @", [2]string{`"b@example.com"`, `"b@@example.com"`}, "not an email address"},
+		{"owner with a display name and no space", [2]string{`"owner@example.com"`, `"Owner<owner@example.com>"`}, "not an email address"},
+		{"recipient with a tab", [2]string{`"b@example.com"`, `"b@example.com\t"`}, "not an email address"},
+		{"recipient with a comma", [2]string{`"b@example.com"`, `"b@example.com,c@example.com"`}, "not an email address"},
+		{"recipient with a double dot", [2]string{`"b@example.com"`, `"b..c@example.com"`}, "not an email address"},
 		{"zero resetDays", [2]string{`"resetDays": 30`, `"resetDays": 0`}, "resetDays must be greater than 0"},
 		{"negative warnDays", [2]string{`"warnDays": 7`, `"warnDays": -1`}, "warnDays must be"},
 		{"warnDays equals resetDays", [2]string{`"warnDays": 7`, `"warnDays": 30`}, "warnDays must be"},
