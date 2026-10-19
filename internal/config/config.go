@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 )
@@ -65,15 +67,23 @@ func (c *Config) Validate() error {
 	var errs []error
 	if strings.TrimSpace(c.Owner) == "" {
 		errs = append(errs, errors.New("owner is empty"))
+	} else if !isEmailAddress(c.Owner) {
+		errs = append(errs, fmt.Errorf("owner %q is not an email address", c.Owner))
 	}
 	if len(c.Recipients) == 0 {
 		errs = append(errs, errors.New("recipients is empty"))
 	}
+	blank := false
 	for _, r := range c.Recipients {
-		if strings.TrimSpace(r) == "" {
-			errs = append(errs, errors.New("recipients contains a blank entry"))
-			break
+		switch {
+		case strings.TrimSpace(r) == "":
+			blank = true
+		case !isEmailAddress(r):
+			errs = append(errs, fmt.Errorf("recipient %q is not an email address", r))
 		}
+	}
+	if blank {
+		errs = append(errs, errors.New("recipients contains a blank entry"))
 	}
 	if c.ResetDays <= 0 {
 		errs = append(errs, errors.New("resetDays must be greater than 0"))
@@ -91,4 +101,17 @@ func (c *Config) Validate() error {
 		return errors.Join(append([]error{errors.New("invalid config")}, errs...)...)
 	}
 	return nil
+}
+
+// isEmailAddress reports whether s is a bare address, such as
+// someone@example.com, with no display name or surrounding space, since it
+// is passed to SES as it is. The domain must contain a dot, as the
+// precondition in terraform/parameter_store.tf requires.
+func isEmailAddress(s string) bool {
+	addr, err := mail.ParseAddress(s)
+	if err != nil || addr.Name != "" || addr.Address != s {
+		return false
+	}
+	at := strings.LastIndex(s, "@")
+	return strings.Contains(s[at+1:], ".")
 }

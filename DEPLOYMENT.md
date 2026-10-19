@@ -107,7 +107,11 @@ countdown are not reset (see
 **Upgrading from 0.5.x:** each Lambda now has its own IAM role. The plan
 creates a `deadmanshandle-<function>-role` for each, moves the Lambdas to
 them, and destroys `deadmanshandle-lambda-role`; there is nothing to do by
-hand.
+hand. The owner and recipients must now be bare email addresses (see the
+rules under [Create Configuration File](#2-create-configuration-file)), and
+the new Lambdas reject a stored configuration with any other. Check them with
+`dmh config show` **before** `terraform apply`, and correct them with
+`dmh config set`.
 
 **Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
 settings into the stored configuration, as `documentKey`, and the Lambdas now
@@ -211,6 +215,8 @@ Rules, checked by `terraform plan` and again by the Lambdas on every run:
 
 - `owner`, `apiKey`, `documentKey` and every entry in `recipients` must be
   non-empty, and there must be at least one recipient.
+- `owner` and every recipient must be a bare email address, such as
+  `someone@example.com`: no display name or spaces, and a dot in the domain.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
 - `deployment.senderEmail` must be an email address. The Lambdas do not

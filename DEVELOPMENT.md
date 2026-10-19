@@ -479,7 +479,7 @@ if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 ```
 
 ### Input Validation
-All config rules live in `Config.Validate` (called by `ParseConfig`), so both
+All config rules live in `Config.Validate` (called by `ParseConfig`), so the
 Lambdas reject an invalid config. Add new rules there rather than at the point
 of use.
 
