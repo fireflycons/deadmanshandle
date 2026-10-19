@@ -125,6 +125,23 @@ which is fine for testing but can't update an installed release.
 Windows). Releases build it for each desktop platform. `go run ./cmd/dmh`
 also works.
 
+### The Recipients' Tools
+
+```bash
+make open-document  # bin/recipients/open-document(.exe), for this machine
+make decrypt-test   # tools/decrypt/decrypt.html against the Go test vector
+```
+
+`open-document` (`cmd/open-document`, logic in `internal/opener`) and
+`tools/decrypt/decrypt.html` open a document encrypted by `dmh document put`.
+The format is in `internal/doccrypt`. Its committed test vector,
+`internal/doccrypt/testdata/vector.{json,dmh}`, is checked by the Go tests and,
+through `make decrypt-test`, against the page's own decryption code (between
+its `BEGIN decrypt` and `END decrypt` markers) with Node 20 or later's
+WebCrypto. A change to the format must change both, and `go test
+./internal/doccrypt -update` rewrites `vector.dmh`. The page itself needs a
+browser to test: open it from disk and open a `.dmh` file.
+
 ### The Setup QR Code
 
 `make qrcode` builds and runs `dmh qr` for this machine, writing the QR
@@ -551,7 +568,8 @@ Don't upload code with `aws lambda update-function-code`: the zips in
 GitHub Actions runs these workflows (in `.github/workflows/`):
 
 - **CI** (`ci.yml`), on a push to any branch except `master` and on a pull
-  request to `master`: golangci-lint and `go test ./...`; `terraform fmt
+  request to `master`: golangci-lint, `go test ./...` and `make decrypt-test`;
+  `terraform fmt
   -check`, `terraform validate` and TFLint (with the AWS ruleset, configured in
   `terraform/.tflint.hcl`); the Android unit tests and lint, and a
   (debug-signed) release build. On a pull request it also checks the version
@@ -567,8 +585,10 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   `LICENSE` (from `git archive`, so tracked files only, without
   `.tflint.hcl`), each Lambda's executable `bootstrap` (linux/arm64) in
   `bin/<function>/`, `app/deadmanshandle-v<VERSION>.apk`, signed with the
-  release key, and `dmh/dmh-<os>-<arch>`, the CLI for
-  Windows, macOS and Linux on amd64 and arm64. The notes link to
+  release key, `dmh/dmh-<os>-<arch>`, the CLI for
+  Windows, macOS and Linux on amd64 and arm64, and `recipients/`, for the
+  owner to give the recipients: `open-document-<os>-<arch>` for the same
+  platforms, `decrypt.html` and `README.txt`. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
   A pull request with `[no release]` (any case) in its title is merged

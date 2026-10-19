@@ -60,14 +60,15 @@ jobs:
       - name: Build
         run: make build
 
-      # The CLI runs on the deployer's computer, so it is built for each
-      # desktop platform
-      - name: Build CLI
+      # dmh runs on the deployer's computer, and open-document on the
+      # recipients', so both are built for each desktop platform
+      - name: Build CLIs
         run: |
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
             os=${target%/*} arch=${target#*/} ext=
             [[ $os == windows ]] && ext=.exe
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" -o "bin/dmh/dmh-$os-$arch$ext" ./cmd/dmh
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" -o "bin/recipients/open-document-$os-$arch$ext" ./cmd/open-document
           done
 
       - uses: actions/setup-java@v6
@@ -98,8 +99,10 @@ jobs:
       # One zip, unpacking to deadmanshandle-v<VERSION>/ ready to deploy: the
       # Terraform configuration and example config laid out as in the
       # repository, each Lambda's executable bootstrap in bin/ where Terraform
-      # expects it, the Android check-in app in app/, and the dmh CLI, which
-      # manages the deployment and sets the app up, in dmh/.
+      # expects it, the Android check-in app in app/, the dmh CLI, which
+      # manages the deployment and sets the app up, in dmh/, and in
+      # recipients/ what the owner gives the recipients to open the document:
+      # decrypt.html, open-document and a README.
       - name: Package
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -114,6 +117,8 @@ jobs:
           done
           install -D -m 644 android/app/build/outputs/apk/release/app-release.apk "stage/$pkg/app/$pkg.apk"
           install -D -m 755 -t "stage/$pkg/dmh" bin/dmh/*
+          install -D -m 755 -t "stage/$pkg/recipients" bin/recipients/*
+          install -D -m 644 -t "stage/$pkg/recipients" tools/decrypt/decrypt.html tools/decrypt/README.txt
           (cd stage && zip -X -q -r "../dist/$pkg.zip" "$pkg")
           (cd dist && sha256sum *.zip > SHA256SUMS)
 

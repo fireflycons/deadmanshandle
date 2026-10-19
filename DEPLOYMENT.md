@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.5.0   # the release you want
+VERSION=v0.6.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.5.0'   # the release you want
+$Version = 'v0.6.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.5.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v0.6.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,10 +69,11 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.5.0/
-├── app/deadmanshandle-v0.5.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v0.6.0/
+├── app/deadmanshandle-v0.6.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
+├── recipients/                       # for your recipients: decrypt.html, open-document, README.txt
 ├── terraform/
 ├── config.example.json
 └── LICENSE
@@ -113,6 +114,12 @@ rules under [Create Configuration File](#2-create-configuration-file)), and
 the new Lambdas reject a stored configuration with any other. Check them with
 `dmh config show` **before** `terraform apply`, and correct them with
 `dmh config set`.
+
+The document can now be encrypted. The stored one is left as it is, and is
+still sent as before, until you run `dmh document password set` and then
+`dmh document put` it again (see
+[Upload Document to S3](#2-upload-document-to-s3)), and prepare your
+recipients (see [Preparing Your Recipients](#preparing-your-recipients)).
 
 **Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
 settings into the stored configuration, as `documentKey`, and the Lambdas now
@@ -342,19 +349,40 @@ The response holds the new deadline; see
 
 ### 2. Upload Document to S3
 
-Upload it with `dmh document put` (see
+Set the password that encrypts it, then upload it with `dmh document put` (see
 [Make the Setup QR Code](#2-make-the-setup-qr-code) for the program for your
 computer):
 
 ```bash
+./dmh/dmh-linux-amd64 document password set
 ./dmh/dmh-linux-amd64 document put your-document.pdf
 ```
 
-It uploads to a key named after the file, or to the one given with `-key`,
-and if that isn't the configured `documentKey`, it then sets `documentKey` to
-it. Recipients receive the attachment under the key's file name. A document
-already at the old key is left there; delete it if you no longer need it.
-`dmh document get` downloads the current document to the current directory.
+`document password set` makes a passphrase of six random words, such as
+`acid-corn-acre-zone-zoom-kiwi`, and prints it; `dmh document password show`
+prints it again. With `-prompt` you type your own instead, of at least 12
+characters and without accented letters, so that it can be typed on any
+computer. It is kept in Parameter Store as `/deadmanshandle/document-password`,
+which only `dmh` reads: Terraform never sees it and no Lambda can read it.
+Give it to your recipients yourself; see
+[Preparing Your Recipients](#preparing-your-recipients).
+
+`document put` encrypts the file with it (AES-256-GCM) and uploads it under
+the file's name plus `.dmh` (`your-document.pdf.dmh`), or to the key given
+with `-key`; if that isn't the configured `documentKey`, it then sets
+`documentKey` to it. The original name is restored when the document is
+opened. Recipients receive the attachment under the key's file name. A
+document already at the old key is left there; delete it if you no longer
+need it. `-plain` uploads the file as it is, unencrypted, and without a
+password set, `put` refuses unless given `-plain`.
+
+`dmh document get` downloads the current document to the current directory,
+decrypted and under its original name; `-raw` saves it as stored.
+
+If `dmh` can't read the password parameter (with credentials that may not
+read it, say), `put` and `get` ask for the password instead. Changing it with
+`document password set` re-encrypts the stored document under the new one,
+which counts as a change of the document (below).
 
 Until the document is uploaded, each daily run emails the owner that it is
 missing.
@@ -366,7 +394,8 @@ up; avoid replacing the document just before a deadline you might miss. An
 upload under a new key may be reported by the next daily run rather than
 straight away.
 
-To upload with the AWS CLI instead, use the configured key:
+To upload with the AWS CLI instead, which uploads the file unencrypted, use
+the configured key:
 
 ```bash
 aws s3 cp your-document.pdf "s3://$(terraform output -raw document_bucket_name)/document.pdf"
@@ -454,7 +483,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.5.0.apk
+adb install -r app/deadmanshandle-v0.6.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is
@@ -587,6 +616,37 @@ Good to know about push:
 - **The config is never backed up** or copied to a new phone, and uninstalling
   the app erases it. Set the app up again from a QR code.
 
+## Preparing Your Recipients
+
+The password is never emailed. The delivery email says that the attachment
+is locked, and to open it with the program or page and the password you gave
+the recipient. So give each recipient, now:
+
+- **The password** (`dmh document password show`), by hand or on paper,
+  never by email. Keep a copy with your will or your other papers too: the
+  email tells a recipient who has lost it to ask your family, executor or
+  solicitor.
+- **The release's `recipients/` folder**, on a USB stick, say:
+  - `decrypt.html`, the easiest way. Double-clicked, it opens in a browser:
+    choose the attachment, type the password, and the document is saved to
+    Downloads. It works offline, and nothing leaves the computer.
+  - `open-document-<os>-<arch>`, a program that does the same: drop the
+    attachment onto it (Windows), or start it and drag the attachment into
+    its window, then type the password. A recipient with AWS access to the
+    deployment isn't asked: it reads the password from Parameter Store. The
+    programs aren't signed, so Windows warns about an unknown publisher and
+    a Mac may refuse to open them; `decrypt.html` has neither problem.
+  - `README.txt`, these steps in plain words.
+
+Neither is attached to the delivery email: emails with script attachments are
+often blocked or marked as spam.
+
+Try it yourself first: `dmh document get -raw` saves the stored `.dmh` file,
+which `decrypt.html` should open with the password.
+
+If you change the password, give the recipients the new one. A copy of the
+document sent earlier still needs the password it was sent with.
+
 ## Updating the Configuration
 
 Terraform only uses `config_file_path` to create the parameter and the state
@@ -694,6 +754,13 @@ identity and its DKIM
 records. The S3 bucket is only deleted when empty, so `terraform destroy`
 fails until every object (and, if it is versioned, every object version) is
 removed.
+
+The document password isn't Terraform's, so `terraform destroy` leaves it.
+Delete it with:
+
+```bash
+aws ssm delete-parameter --name /deadmanshandle/document-password
+```
 
 ## Troubleshooting
 

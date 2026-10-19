@@ -10,8 +10,10 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
 ## Layout
 
 - Go module `github.com/fireflycons/deadmanshandle`. Standard library plus the
-  AWS SDK only; the one exception is `github.com/skip2/go-qrcode`, used only
-  by `cmd/dmh`.
+  AWS SDK only. The exceptions: `github.com/skip2/go-qrcode`, used only by
+  `cmd/dmh`, and `golang.org/x/term` (with `x/sys`), used only through
+  `internal/prompt` by `cmd/dmh` and `cmd/open-document`. The Lambdas must
+  not link either.
 - Five Lambdas (`provided.al2023`, arm64) from `cmd/http`, `cmd/scheduled`,
   `cmd/docwatch`, `cmd/alarmpush` (deployed only with push) and
   `cmd/apiguard` (deployed only with `api_flood_guard`).
@@ -19,14 +21,19 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
   credentials (global `-app`, `-region` before the command):
   - `checkin`; `config show` (`-show-secrets`, `-json`); `config set`
     (settings, plus `-timeout`, which acts as a check-in, and
-    `-clear-push-token`); `document get`; `document put <file>` (uploads,
-    then points `documentKey` at it).
+    `-clear-push-token`); `document get` (decrypts, `-raw` doesn't);
+    `document put <file>` (encrypts and uploads as `<name>.dmh`, `-plain`
+    doesn't, then points `documentKey` at it); `document password
+    set|show`.
   - `api status|disable|enable|check-interval <minutes>`: closes and reopens
     the check-in API, and sets the flood guard's check interval.
   - `qr` writes the app's setup QR code (`make qrcode`; `QRFLAGS=-aws` reads
     Parameter Store, `-firebase` adds the push settings).
   - Each command looks up only the parameters it needs, so `config set`
     works before an upgrade's `terraform apply`.
+- `cmd/open-document` is the recipients' program (logic in
+  `internal/opener`), and `tools/decrypt/decrypt.html` the recipients' page.
+  Both ship in the release's `recipients/`, never attached to the email.
 - Hexagonal `internal/`:
   - `domain`: business rules and the clock (injectable).
   - `ports`: interfaces. Ports must not import domain.
@@ -40,6 +47,9 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
   - `qrconfig`: the QR payload, `{"v":1,"endpoint":"https://…","apiKey":"…"}`,
     with an optional `push` object (`projectId`, `appId`, `apiKey`,
     `senderId`). Older apps ignore it, so it didn't need a new `v`.
+  - `doccrypt`: the document's format, shared with `decrypt.html`;
+    `passphrase` (EFF short word list), `prompt` (the only `x/term` user),
+    `opener`.
 - `android/`: the check-in app. Kotlin, Compose, `minSdk` 30. Its source is
   in `android/app/src/main/java/com/fireflycons/deadmanshandle/`:
   - `config/`: config, Keystore storage, QR payload.
@@ -144,6 +154,19 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
     stops the rule.
   - `dmh api disable`/`enable` stop the rule, so the guard never reopens an
     API closed by hand.
+- **Document encryption:** `"DMHE"`, version 1, PBKDF2 iterations (uint32
+  BE, 600,000), salt (16), nonce (12), then AES-256-GCM with that header as
+  additional data. The plaintext is the original name (uint16 BE length,
+  UTF-8) then the content. `decrypt.html` reads the same format.
+  - The password is the SecureString `/<app>/document-password`, which only
+    `dmh` creates, so it's never in Terraform state and no Lambda role can
+    read it. It is never emailed: the owner gives it to recipients.
+  - Generated passphrases are 6 EFF short-list words; owner-chosen ones are
+    printable ASCII of 12 or more, since a Windows console may pass other
+    characters in its code page.
+  - Changing the password re-encrypts the stored document first.
+  - The Lambdas only check the `DMHE` prefix, to choose the recipients' email
+    text.
 - Deadlines are UTC in emails, as `Monday 2 January 2006 at 15:04 MST`. The
   app shows the same format in the phone's time zone.
 
@@ -197,6 +220,8 @@ go build ./... && go vet ./... && go test ./internal/...
 make build          # bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap (linux/arm64, CGO off, lambda.norpc)
 make lint           # go vet and golangci-lint, as CI
 make dmh            # bin/dmh/dmh(.exe), the CLI for this machine
+make open-document  # bin/recipients/open-document(.exe), for this machine
+make decrypt-test   # decrypt.html against the Go test vector (Node 20+)
 make qrcode         # checkin-qr.png; QRFLAGS="-aws -firebase google-services.json" (state is in S3)
 make validate       # terraform init -backend=false && terraform validate
 make android-test   # Android JVM unit tests and lint
@@ -225,6 +250,9 @@ make android        # Android release APK (debug-signed locally)
 - **Go:** unit tests with the mocks and the real domain service, using the
   standard `testing` package, with tables where useful. There is no local
   Lambda environment.
+- **decrypt.html:** `make decrypt-test` (also in CI) runs its decryption, on
+  Node's WebCrypto, against `internal/doccrypt/testdata`. Node 24 is in
+  `C:\Program Files\nodejs`. The page itself needs a browser.
 - **Android JVM tests** cover the config (including the push settings and
   token registration), the QR payload, the check-in result and body, and the
   push message. Android's `org.json` is a stub on the JVM, so the tests use the real

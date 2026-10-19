@@ -83,10 +83,15 @@ From `deadmanshandle-<version>/`, with the `dmh` program for your computer
 (see [Make the Setup QR Code](DEPLOYMENT.md#2-make-the-setup-qr-code)):
 
 ```bash
+./dmh/dmh-linux-amd64 document password set
 ./dmh/dmh-linux-amd64 document put important-document.pdf
 ```
 
-This uploads the document and makes it the one that is sent.
+The first command makes the password that encrypts the document, and prints
+it. The second encrypts the document with it, uploads it and makes it the one
+that is sent. Give the password and the release's `recipients/` folder to
+your recipients yourself, never by email; see
+[Preparing Your Recipients](DEPLOYMENT.md#preparing-your-recipients).
 `dmh config show` then shows the settings and the deadline.
 
 The handle cannot send anything until the document is uploaded, and you are
