@@ -31,6 +31,10 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # The runner's Node (20 or later) has WebCrypto, as browsers do
+      - name: Test decrypt.html
+        run: make decrypt-test
+
   terraform:
     name: Terraform lint
     runs-on: ubuntu-latest
