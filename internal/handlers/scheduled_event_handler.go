@@ -9,6 +9,7 @@ import (
 	"slices"
 
 	"github.com/fireflycons/deadmanshandle/internal/config"
+	"github.com/fireflycons/deadmanshandle/internal/doccrypt"
 	"github.com/fireflycons/deadmanshandle/internal/domain"
 	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
@@ -101,6 +102,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 	// was checked for changes; if not, nothing is sent and the error makes
 	// Lambda retry the run, which checks the new one first.
 	var attachments map[string][]byte
+	encrypted := false
 	if slices.ContainsFunc(emails, domain.EmailAction.AttachDocument) {
 		content, err := h.documentStore.GetDocument(ctx, h.documentBucket, cfg.DocumentKey, doc.ETag)
 		if err != nil {
@@ -110,6 +112,7 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		attachments = map[string][]byte{
 			path.Base(cfg.DocumentKey): content,
 		}
+		encrypted = doccrypt.IsEncrypted(content)
 	}
 
 	// Send each email individually so that one failure does not stop the
@@ -121,6 +124,9 @@ func (h *ScheduledEventHandler) Handle(ctx context.Context) error {
 		var emailAttachments map[string][]byte
 		if email.AttachDocument() {
 			emailAttachments = attachments
+			if encrypted {
+				email.Body = domain.EncryptedDocumentBody(path.Base(cfg.DocumentKey), cfg.Owner)
+			}
 		}
 
 		if email.ForOwner() {
