@@ -18,6 +18,9 @@ rmdir = rm -rf $1
 gradlew = cd android && ./gradlew
 endif
 
+# Strip the symbol table and DWARF debug information from the Go binaries
+GO_LDFLAGS := -s -w
+
 # $(info) drops leading spaces, so the help indent is made from this
 indent := $(subst ,,  )
 
@@ -47,20 +50,20 @@ build: export GOARCH = arm64
 # go build -o creates the bin/ directories
 build:
 	@echo Building HTTP handler...
-	@go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
+	@go build -tags lambda.norpc -ldflags "$(GO_LDFLAGS)" -o bin/http/bootstrap ./cmd/http
 	@echo Building scheduled handler...
-	@go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
+	@go build -tags lambda.norpc -ldflags "$(GO_LDFLAGS)" -o bin/scheduled/bootstrap ./cmd/scheduled
 	@echo Building document watch handler...
-	@go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
+	@go build -tags lambda.norpc -ldflags "$(GO_LDFLAGS)" -o bin/docwatch/bootstrap ./cmd/docwatch
 	@echo Building alarm push handler...
-	@go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
+	@go build -tags lambda.norpc -ldflags "$(GO_LDFLAGS)" -o bin/alarmpush/bootstrap ./cmd/alarmpush
 	@echo Building API guard handler...
-	@go build -tags lambda.norpc -o bin/apiguard/bootstrap ./cmd/apiguard
+	@go build -tags lambda.norpc -ldflags "$(GO_LDFLAGS)" -o bin/apiguard/bootstrap ./cmd/apiguard
 
 # Built for this machine, unlike the Lambdas; each release has it for every
 # desktop platform
 dmh:
-	@go build -o bin/dmh/dmh$(goexe) ./cmd/dmh
+	@go build -ldflags "$(GO_LDFLAGS)" -o bin/dmh/dmh$(goexe) ./cmd/dmh
 	@echo Built bin/dmh/dmh$(goexe)
 
 test:
