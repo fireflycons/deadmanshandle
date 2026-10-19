@@ -9,7 +9,8 @@ The diagram is drawn by `tools/architecture_diagram.py`; see
 
 ### AWS Services Used
 
-- **AWS Lambda**: Compute (3 functions, 4 with push)
+- **AWS Lambda**: Compute (3 functions, plus the flood guard, on by
+  default, and alarmpush with push)
 - **API Gateway**: HTTP endpoint for check-ins
 - **EventBridge**: Scheduled daily checks, and S3 upload events
 - **Parameter Store**: Configuration storage
@@ -140,7 +141,7 @@ deadmanshandle/
 │   ├── provider.tf                       # AWS provider and Terraform version
 │   ├── variables.tf                      # Input variables
 │   ├── data.tf                           # Data sources
-│   ├── iam.tf                            # IAM role and policies
+│   ├── iam.tf                            # IAM roles, one per Lambda
 │   ├── lambda.tf                         # Lambda functions and log groups
 │   ├── api_gateway.tf                    # HTTP API Gateway
 │   ├── s3.tf                             # S3 bucket configuration
@@ -334,7 +335,7 @@ See [DEVELOPMENT.md](DEVELOPMENT.md#android-app) for building it.
 ### `terraform/` - Infrastructure as Code
 Terraform files defining AWS resources:
 - **provider.tf**: AWS provider configuration
-- **iam.tf**: Lambda execution role and policies
+- **iam.tf**: One execution role per Lambda, each with only its permissions
 - **lambda.tf**: Lambda function definitions, archiving and log groups
 - **api_gateway.tf**: HTTP API and routes
 - **s3.tf**: S3 bucket with security settings
@@ -359,7 +360,8 @@ makes the decisions; the handlers carry them out through the ports:
 ┌─────────────────────────────────────┐
 │       Lambda Entry Points           │
 │  (cmd/http, cmd/scheduled,          │
-│   cmd/docwatch)                     │
+│   cmd/docwatch, cmd/alarmpush,      │
+│   cmd/apiguard)                     │
 └──────────────┬──────────────────────┘
                │ wire up
 ┌──────────────▼──────────────────────┐

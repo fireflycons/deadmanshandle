@@ -71,14 +71,15 @@ Terraform expects them:
 ```
 deadmanshandle-v0.5.0/
 ├── app/deadmanshandle-v0.5.0.apk     # the Android app; see Setting Up the Android App
-├── bin/{http,scheduled,docwatch,alarmpush}/bootstrap   # the Lambdas, linux/arm64
+├── bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── terraform/
 ├── config.example.json
 └── LICENSE
 ```
 
-`alarmpush` is deployed only with push notifications. On Windows the
+`alarmpush` is deployed only with push notifications, and `apiguard` only
+with the flood guard (on by default). On Windows the
 `bootstrap` files lose their executable bit; that doesn't matter, because
 Terraform sets it when it zips them for Lambda.
 
@@ -103,6 +104,15 @@ old directory, and run
 `terraform/`. The plan shows the Lambdas updating; the configuration and the
 countdown are not reset (see
 [Updating the Configuration](#updating-the-configuration)).
+
+**Upgrading from 0.5.x:** each Lambda now has its own IAM role. The plan
+creates a `deadmanshandle-<function>-role` for each, moves the Lambdas to
+them, and destroys `deadmanshandle-lambda-role`; there is nothing to do by
+hand. The owner and recipients must now be bare email addresses (see the
+rules under [Create Configuration File](#2-create-configuration-file)), and
+the new Lambdas reject a stored configuration with any other. Check them with
+`dmh config show` **before** `terraform apply`, and correct them with
+`dmh config set`.
 
 **Upgrading from 0.3.x:** the document's key has moved from the Lambdas'
 settings into the stored configuration, as `documentKey`, and the Lambdas now
@@ -202,14 +212,18 @@ stored in the parameter.
 - `documentBucket`: (Optional) Bucket name. Empty or absent for a generated
   name.
 
-Rules, checked by `terraform plan` and again by both Lambdas on every run:
+Rules, checked by `terraform plan` and again by the Lambdas on every run:
 
 - `owner`, `apiKey`, `documentKey` and every entry in `recipients` must be
   non-empty, and there must be at least one recipient.
+- `owner` and every recipient must be a bare email address, such as
+  `someone@example.com`: no display name or spaces, and a dot in the domain.
+  The part before the `@` may use letters, digits and `. _ % + ' -`, the
+  domain letters, digits, `-` and dots.
 - `resetDays` must be greater than 0, and `warnDays` must be from 0 to
   `resetDays - 1`.
-- `deployment.senderEmail` must be an email address. The Lambdas do not
-  check it.
+- `deployment.senderEmail` must be an email address, by the same rule. The
+  Lambdas do not check it.
 - `timeout` must be an RFC 3339 time. Set it to your first deadline; each
   check-in then moves it to `resetDays` from now. It only seeds the DynamoDB
   state item when Terraform creates it. If it is already past then, the
@@ -278,7 +292,7 @@ Review the plan to ensure it will create the expected resources:
   records if `manage_dkim_dns_records` is true
 - The domain's DMARC record, if `dmarc_record` is set
 - SNS topic, owner email subscription and CloudWatch alarms
-- IAM role and policies
+- An IAM role for each Lambda, with only the permissions it uses
 - With `firebase_service_account_file` set: the SNS platform application for
   push, the `alarmpush` Lambda subscribed to the alarm topic, and the push
   alarms
@@ -384,7 +398,7 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --follow
 aws logs tail /aws/apigateway/deadmanshandle --follow
 ```
 
-Both Lambdas log JSON lines: each check-in (accepted or rejected, with the
+The Lambdas log JSON lines: each check-in (accepted or rejected, with the
 caller's IP), each email sent, and every failure with its error. The API key
 and the document are never logged. Lambda logs are kept for 14 days and API
 Gateway logs for 7.
@@ -650,7 +664,9 @@ the API and emails you (and pushes, with push on) that it has. Requests
 refused while it is closed still count, so the alarm stays in ALARM for as
 long as the flood goes on. Every `api_guard_check_minutes` (15 by default),
 the guard checks the alarm, and once it is back to OK, which takes 5 to 10
-minutes after the flood stops, reopens the API and tells you so.
+minutes after the flood stops, reopens the API and tells you so. If the
+closed notice fails, Lambda's retry sends it again; a failed reopened notice
+isn't retried, but `apiguard-errors` tells you.
 
 - `dmh api check-interval <minutes>` changes how often it checks, from 1 to
   1440 minutes, even while it has the API closed.
@@ -706,11 +722,12 @@ Common issues:
 
 ### Permission Denied Errors
 
-Verify IAM role policies:
+Verify the IAM policy of the Lambda that was refused (`http`, `scheduled`,
+`docwatch`, `apiguard` or `alarmpush`):
 
 ```bash
-aws iam get-role-policy --role-name deadmanshandle-lambda-role \
-  --policy-name deadmanshandle-lambda-policy
+aws iam get-role-policy --role-name deadmanshandle-scheduled-role \
+  --policy-name deadmanshandle-scheduled-policy
 ```
 
 ### SES Email Not Sending

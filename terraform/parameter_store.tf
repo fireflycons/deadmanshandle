@@ -14,6 +14,11 @@ locals {
   # Stored in the parameter, so that it can be changed without Terraform.
   # Older seed files have it in the deployment section.
   document_key = try(local.seed_config.documentKey, local.deployment.documentKey, "document.pdf")
+
+  # A bare address, with a dot in the domain. Config.Validate uses the same
+  # pattern (emailAddressPattern in internal/config), and a test checks they
+  # match.
+  email_address_pattern = "^[A-Za-z0-9_%+'-]+([.][A-Za-z0-9_%+'-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$"
 }
 
 resource "aws_ssm_parameter" "config" {
@@ -39,6 +44,15 @@ resource "aws_ssm_parameter" "config" {
       condition     = try(length(local.seed_config.recipients) > 0 && alltrue([for r in local.seed_config.recipients : trimspace(r) != ""]), false)
       error_message = "Config: recipients is empty or contains a blank entry."
     }
+    # Blank or missing addresses are reported above
+    precondition {
+      condition     = try(trimspace(local.seed_config.owner) == "" || can(regex(local.email_address_pattern, local.seed_config.owner)), true)
+      error_message = "Config: owner is not an email address."
+    }
+    precondition {
+      condition     = try(alltrue([for r in local.seed_config.recipients : trimspace(r) == "" || can(regex(local.email_address_pattern, r))]), true)
+      error_message = "Config: recipients contains an entry that is not an email address."
+    }
     precondition {
       condition     = try(local.seed_config.resetDays > 0, false)
       error_message = "Config: resetDays must be greater than 0."
@@ -52,7 +66,7 @@ resource "aws_ssm_parameter" "config" {
       error_message = "Config: apiKey is empty."
     }
     precondition {
-      condition     = can(regex("^[^@ ]+@[^@ ]+[.][^@ ]+$", local.sender_email))
+      condition     = can(regex(local.email_address_pattern, local.sender_email))
       error_message = "Config: deployment.senderEmail must be an email address."
     }
     precondition {

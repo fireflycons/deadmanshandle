@@ -61,7 +61,8 @@ func NewAPIGuardHandler(
 
 // HandleAlarm closes the API if message, the body of an SNS notification
 // from the alarms topic, is the rejected-requests alarm entering ALARM. An
-// API that is already closed, by the guard or by hand, is left alone.
+// API that is already closed is left alone; if the guard closed it, the
+// notice is sent again.
 func (h *APIGuardHandler) HandleAlarm(ctx context.Context, message string) error {
 	var alarm cloudWatchAlarm
 	if err := json.Unmarshal([]byte(message), &alarm); err != nil {
@@ -77,8 +78,20 @@ func (h *APIGuardHandler) HandleAlarm(ctx context.Context, message string) error
 		return fmt.Errorf("reading the API's throttle: %w", err)
 	}
 	if throttle.Closed() {
-		slog.Info("API already closed")
-		return nil
+		// With the check running, the guard closed it: this is a retry after
+		// a failed notice, or the alarm again before a check reopened it, so
+		// the notice is sent again. dmh api disable stops the check, so an
+		// API closed by hand is left alone.
+		minutes, checking, err := h.schedule.Interval(ctx)
+		if err != nil {
+			return fmt.Errorf("reading the check: %w", err)
+		}
+		if !checking {
+			slog.Info("API already closed")
+			return nil
+		}
+		slog.Info("API already closed by the guard; sending the notice again")
+		return h.notifyClosed(ctx, minutes)
 	}
 
 	// The check first: if closing then failed, the check finds the API open
@@ -97,6 +110,10 @@ func (h *APIGuardHandler) HandleAlarm(ctx context.Context, message string) error
 		slog.Warn("Reading the check interval failed", "error", err)
 		minutes = 0
 	}
+	return h.notifyClosed(ctx, minutes)
+}
+
+func (h *APIGuardHandler) notifyClosed(ctx context.Context, minutes int) error {
 	return h.notify(ctx, func(cfg *config.Config) domain.EmailAction {
 		return h.service.APIClosedEmail(cfg, minutes)
 	})

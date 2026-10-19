@@ -23,7 +23,7 @@ resource "aws_cloudwatch_log_group" "docwatch_handler" {
 resource "aws_lambda_function" "http_handler" {
   filename      = data.archive_file.http_lambda.output_path
   function_name = "${var.application_name}-http"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.lambda["http"].arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["arm64"] # must match GOARCH in the Makefile
@@ -50,7 +50,7 @@ resource "aws_lambda_function" "http_handler" {
 resource "aws_lambda_function" "scheduled_handler" {
   filename      = data.archive_file.scheduled_lambda.output_path
   function_name = "${var.application_name}-scheduled"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.lambda["scheduled"].arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["arm64"] # must match GOARCH in the Makefile
@@ -81,7 +81,7 @@ resource "aws_lambda_function" "scheduled_handler" {
 resource "aws_lambda_function" "docwatch_handler" {
   filename      = data.archive_file.docwatch_lambda.output_path
   function_name = "${var.application_name}-docwatch"
-  role          = aws_iam_role.lambda_role.arn
+  role          = aws_iam_role.lambda["docwatch"].arn
   handler       = "bootstrap"
   runtime       = "provided.al2023"
   architectures = ["arm64"] # must match GOARCH in the Makefile

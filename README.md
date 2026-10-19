@@ -103,7 +103,7 @@ Response:
 - The Parameter Store config is a SecureString, since it holds the API key
 - Optional S3 bucket versioning (`document_versioning`); old versions expire after 30 days
 - API key validation uses constant-time comparison
-- The Lambdas' IAM role has only the permissions they need
+- Each Lambda has its own IAM role, with only the permissions it needs
 - Every configuration field is validated, by `terraform plan` and by the Lambdas
 - The API key and the document are never logged
 - The SES sender domain is verified with DKIM by Terraform

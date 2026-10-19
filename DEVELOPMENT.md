@@ -87,11 +87,11 @@ go build ./...
 make build
 
 # Equivalent to:
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/http/bootstrap ./cmd/http
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/scheduled/bootstrap ./cmd/scheduled
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/docwatch/bootstrap ./cmd/docwatch
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/alarmpush/bootstrap ./cmd/alarmpush
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -o bin/apiguard/bootstrap ./cmd/apiguard
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags "-s -w" -o bin/http/bootstrap ./cmd/http
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags "-s -w" -o bin/scheduled/bootstrap ./cmd/scheduled
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags "-s -w" -o bin/docwatch/bootstrap ./cmd/docwatch
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags "-s -w" -o bin/alarmpush/bootstrap ./cmd/alarmpush
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -tags lambda.norpc -ldflags "-s -w" -o bin/apiguard/bootstrap ./cmd/apiguard
 ```
 
 Terraform deploys these binaries from `bin/`; see
@@ -234,7 +234,7 @@ if err := h.emailSender.SendEmail(ctx, to, subject, body, attachments); err != n
 ```
 
 #### Logging
-Both Lambdas log JSON lines with `log/slog` (set up in `cmd/*/main.go`), which
+The Lambdas log JSON lines with `log/slog` (set up in `cmd/*/main.go`), which
 Lambda sends to CloudWatch Logs. Log events and errors with key/value
 attributes:
 
@@ -403,8 +403,9 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
        newService ports.NewService
    }
    ```
-   Create the adapter in `cmd/*/main.go`, and grant the Lambda's IAM role the
-   permissions it needs in `terraform/iam.tf`.
+   Create the adapter in `cmd/*/main.go`, and add the permissions it needs
+   to that Lambda's entry in `lambda_policies` in `terraform/iam.tf`. Each
+   Lambda has its own role.
 
 ### Adding a New Handler
 
@@ -436,6 +437,8 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
 
 5. **Build and deploy it**: add it to the `build` target in the Makefile, and
    add the function, its archive and its log group in `terraform/lambda.tf`.
+   Give it a role by adding it to `lambda_functions` and `lambda_policies` in
+   `terraform/iam.tf`, and use `aws_iam_role.lambda["<name>"].arn`.
 
 ### Modifying Configuration
 
@@ -459,8 +462,9 @@ aws logs tail /aws/lambda/deadmanshandle-scheduled --since 1d
 
 AWS clients are created once in `init()` in `cmd/*/main.go` and reused on warm
 starts. Anything that must be current on each invocation (such as the clock)
-is read per call instead. Both functions run with 256 MB; the work is a few
-AWS calls a day, so there is little to tune.
+is read per call instead. The HTTP, scheduled and docwatch functions run with
+256 MB, and alarmpush and apiguard with 128 MB; the work is a few AWS calls a
+day, so there is little to tune.
 
 ## Security Best Practices
 
@@ -475,7 +479,7 @@ if subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) != 1 {
 ```
 
 ### Input Validation
-All config rules live in `Config.Validate` (called by `ParseConfig`), so both
+All config rules live in `Config.Validate` (called by `ParseConfig`), so the
 Lambdas reject an invalid config. Add new rules there rather than at the point
 of use.
 
@@ -567,6 +571,9 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   Windows, macOS and Linux on amd64 and arm64. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
+  A pull request with `[no release]` (any case) in its title is merged
+  without one: the workflow still runs the checks, but skips the release.
+  Its changes go out with the next release, whose notes list them.
 
 The release key comes from three repository secrets: `ANDROID_KEYSTORE_BASE64`
 (the PKCS12 keystore, base64-encoded), `ANDROID_KEYSTORE_PASSWORD` and
@@ -579,7 +586,9 @@ install a new one.
 The version is in `VERSION` at the root, as `MAJOR.MINOR.PATCH`. **Bump it in
 every pull request to `master`**: the pull request fails if `v<VERSION>` is
 already a tag, or isn't greater than the latest release and than `VERSION` on
-`master`. The release fails too if the tag exists. To run the same check locally:
+`master`. The release fails too if the tag exists. A `[no release]` pull
+request skips the check, so leave `VERSION` as it is. To run the same check
+locally:
 
 ```bash
 bash .github/scripts/check-version.sh
@@ -622,7 +631,7 @@ Before submitting a pull request:
 - [ ] Error handling: all errors handled
 - [ ] Terraform changes valid: `terraform fmt -check`, `terraform validate`
 - [ ] Android changes pass `make android-test` and `make android`
-- [ ] `VERSION` bumped
+- [ ] `VERSION` bumped, or `[no release]` in the title
 
 ## Useful Commands
 

@@ -3,6 +3,8 @@ package config
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -65,15 +67,23 @@ func (c *Config) Validate() error {
 	var errs []error
 	if strings.TrimSpace(c.Owner) == "" {
 		errs = append(errs, errors.New("owner is empty"))
+	} else if !isEmailAddress(c.Owner) {
+		errs = append(errs, fmt.Errorf("owner %q is not an email address", c.Owner))
 	}
 	if len(c.Recipients) == 0 {
 		errs = append(errs, errors.New("recipients is empty"))
 	}
+	blank := false
 	for _, r := range c.Recipients {
-		if strings.TrimSpace(r) == "" {
-			errs = append(errs, errors.New("recipients contains a blank entry"))
-			break
+		switch {
+		case strings.TrimSpace(r) == "":
+			blank = true
+		case !isEmailAddress(r):
+			errs = append(errs, fmt.Errorf("recipient %q is not an email address", r))
 		}
+	}
+	if blank {
+		errs = append(errs, errors.New("recipients contains a blank entry"))
 	}
 	if c.ResetDays <= 0 {
 		errs = append(errs, errors.New("resetDays must be greater than 0"))
@@ -91,4 +101,15 @@ func (c *Config) Validate() error {
 		return errors.Join(append([]error{errors.New("invalid config")}, errs...)...)
 	}
 	return nil
+}
+
+// emailAddressPattern matches a bare address, such as someone@example.com,
+// which is passed to SES as it is: no display name or spaces, a local part of
+// dot-separated words and a domain with at least one dot. It must stay the
+// same as email_address_pattern in terraform/parameter_store.tf, so that a
+// seed file that passes terraform plan passes here too; a test checks this.
+var emailAddressPattern = regexp.MustCompile("^[A-Za-z0-9_%+'-]+([.][A-Za-z0-9_%+'-]+)*@[A-Za-z0-9-]+([.][A-Za-z0-9-]+)+$")
+
+func isEmailAddress(s string) bool {
+	return emailAddressPattern.MatchString(s)
 }
