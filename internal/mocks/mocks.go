@@ -44,7 +44,11 @@ func (m *MockConfigStore) GetConfig(ctx context.Context, parameterName string) (
 	if m.GetErr != nil {
 		return nil, m.GetErr
 	}
-	return m.Data[parameterName], nil
+	data, ok := m.Data[parameterName]
+	if !ok {
+		return nil, fmt.Errorf("parameter %s: %w", parameterName, ports.ErrNotFound)
+	}
+	return data, nil
 }
 
 // PutConfig stores the value, as the CLI's config writer
@@ -183,7 +187,7 @@ func (m *MockDocumentStore) DocumentETag(ctx context.Context, bucket, key string
 func (m *MockDocumentStore) Download(ctx context.Context, bucket, key string) (io.ReadCloser, error) {
 	data, ok := m.Documents[bucket][key]
 	if !ok {
-		return nil, fmt.Errorf("no document s3://%s/%s", bucket, key)
+		return nil, fmt.Errorf("no document s3://%s/%s: %w", bucket, key, ports.ErrNotFound)
 	}
 	return io.NopCloser(bytes.NewReader(data)), nil
 }

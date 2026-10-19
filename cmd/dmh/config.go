@@ -26,7 +26,7 @@ func runConfig(ctx context.Context, g globals, args []string) error {
 
 func runConfigShow(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("config show", "[flags]")
-	showSecrets := fs.Bool("show-secrets", false, "show the API key and push token in full")
+	showSecrets := fs.Bool("show-secrets", false, "show the API key, document password and push token in full")
 	asJSON := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -81,6 +81,11 @@ func runConfigShow(ctx context.Context, g globals, args []string) error {
 		} else {
 			report.APIGuard = guard
 		}
+	}
+	if password, found, err := cli.ReadDocumentPassword(ctx, s.ssm, s.passwordParameter()); err != nil {
+		problems = append(problems, err.Error())
+	} else {
+		report.DocumentPassword = cli.DocumentPasswordStatus(password, found, *showSecrets)
 	}
 	report.Problems = append(report.Problems, problems...)
 	if *asJSON {

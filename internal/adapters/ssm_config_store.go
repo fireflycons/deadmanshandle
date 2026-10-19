@@ -2,11 +2,13 @@ package adapters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
+	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
 
 // SSMConfigStore implements the ConfigStore interface using AWS Parameter Store
@@ -27,6 +29,10 @@ func (s *SSMConfigStore) GetConfig(ctx context.Context, parameterName string) ([
 		Name:           &parameterName,
 		WithDecryption: boolPtr(true),
 	})
+	var notFound *types.ParameterNotFound
+	if errors.As(err, &notFound) {
+		return nil, fmt.Errorf("%w: %w", ports.ErrNotFound, err)
+	}
 	if err != nil {
 		return nil, err
 	}
