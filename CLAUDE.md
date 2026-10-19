@@ -266,7 +266,7 @@ make android        # Android release APK (debug-signed locally)
   - golangci-lint and `go test`
   - `terraform fmt`, `validate` and TFLint
   - Android unit tests, lint and a release build, on JDK 25
-  - the `VERSION` check, on pull requests
+  - the `VERSION` check, on pull requests not titled `[no release]`
   - `CI gate`, the job required by `master`'s ruleset; add new jobs to its
     `needs`
 - **Release** (`release.yml`), on a merge to `master`: it creates
@@ -274,12 +274,17 @@ make android        # Android release APK (debug-signed locally)
   `deadmanshandle-v<VERSION>.zip`: Terraform, the example config, the Lambdas
   in `bin/`, the signed APK in `app/` and `dmh` for each desktop platform
   in `dmh/`, laid out ready to deploy.
+  - A pull request with `[no release]` (any case) in its title is merged
+    without a release: the `decide` job reads the merged pull request's
+    title (`.github/scripts/decide-release.sh`), and the release job is
+    skipped. Its changes go out with the next release.
   - The APK is signed from the repository secrets `ANDROID_KEYSTORE_BASE64`,
     `ANDROID_KEYSTORE_PASSWORD` and `ANDROID_KEY_ALIAS`, and the release fails
     without them.
   - Every release must use the same key, and the user keeps the keystore.
-- **`VERSION`** (semver) must be bumped in each pull request to `master`; CI
-  fails if the tag exists or isn't the highest. The app's `versionName` is
+- **`VERSION`** (semver) must be bumped in each pull request to `master`,
+  unless it's titled `[no release]`; CI fails if the tag exists or isn't the
+  highest. The app's `versionName` is
   `VERSION`, and its `versionCode` is `MAJOR*10000 + MINOR*100 + PATCH`.
 
 ## Deployment specifics (this owner's)

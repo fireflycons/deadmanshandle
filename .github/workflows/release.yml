@@ -15,9 +15,32 @@ jobs:
   checks:
     uses: ./.github/workflows/ci.yml
 
+  # A pull request with [no release] (any case) in its title is merged
+  # without a release; its changes go out with the next one. The title is
+  # read from the pull request, since a squash merge of one commit keeps the
+  # commit's title.
+  decide:
+    name: Release or not
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Look for [no release]
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_MESSAGE: ${{ github.event.head_commit.message }}
+        run: bash .github/scripts/decide-release.sh
+
   release:
     name: Build and release
-    needs: checks
+    needs: [checks, decide]
+    if: needs.decide.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

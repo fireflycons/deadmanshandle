@@ -571,6 +571,9 @@ GitHub Actions runs these workflows (in `.github/workflows/`):
   Windows, macOS and Linux on amd64 and arm64. The notes link to
   [Deploying from a Release](DEPLOYMENT.md#deploying-from-a-release) and list
   the commits since the previous release.
+  A pull request with `[no release]` (any case) in its title is merged
+  without one: the workflow still runs the checks, but skips the release.
+  Its changes go out with the next release, whose notes list them.
 
 The release key comes from three repository secrets: `ANDROID_KEYSTORE_BASE64`
 (the PKCS12 keystore, base64-encoded), `ANDROID_KEYSTORE_PASSWORD` and
@@ -583,7 +586,9 @@ install a new one.
 The version is in `VERSION` at the root, as `MAJOR.MINOR.PATCH`. **Bump it in
 every pull request to `master`**: the pull request fails if `v<VERSION>` is
 already a tag, or isn't greater than the latest release and than `VERSION` on
-`master`. The release fails too if the tag exists. To run the same check locally:
+`master`. The release fails too if the tag exists. A `[no release]` pull
+request skips the check, so leave `VERSION` as it is. To run the same check
+locally:
 
 ```bash
 bash .github/scripts/check-version.sh
@@ -626,7 +631,7 @@ Before submitting a pull request:
 - [ ] Error handling: all errors handled
 - [ ] Terraform changes valid: `terraform fmt -check`, `terraform validate`
 - [ ] Android changes pass `make android-test` and `make android`
-- [ ] `VERSION` bumped
+- [ ] `VERSION` bumped, or `[no release]` in the title
 
 ## Useful Commands
 

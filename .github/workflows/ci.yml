@@ -5,6 +5,9 @@ on:
     branches-ignore: [master]
   pull_request:
     branches: [master]
+    # edited, so that adding or removing [no release] in the title re-runs
+    # the checks (all of them, since the gate stands for the whole run)
+    types: [opened, synchronize, reopened, edited]
   workflow_call: # run by the release workflow before it builds
 
 permissions:
@@ -85,7 +88,9 @@ jobs:
 
   version:
     name: Next version is unused
-    if: github.event_name == 'pull_request'
+    # A pull request with [no release] (any case) in its title is merged
+    # without a release, so it needn't bump VERSION
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.title, '[no release]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
