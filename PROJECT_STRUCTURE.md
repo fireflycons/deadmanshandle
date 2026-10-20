@@ -58,21 +58,31 @@ deadmanshandle/
 │   │   └── main.go                       # Alarm topic (SNS) handler: pushes alarms
 │   ├── apiguard/
 │   │   └── main.go                       # Flood guard: closes and reopens the API
-│   └── dmh/                              # CLI that manages the deployment
-│       ├── main.go                       # Global flags and command dispatch
-│       ├── session.go                    # AWS clients; finds the resources from Parameter Store
-│       ├── checkin.go                    # dmh checkin
-│       ├── config.go                     # dmh config show, dmh config set
-│       ├── document.go                   # dmh document get, dmh document put
-│       └── qr.go                         # dmh qr: QR code that sets up the Android app
+│   ├── dmh/                              # CLI that manages the deployment
+│   │   ├── main.go                       # Global flags and command dispatch
+│   │   ├── session.go                    # AWS clients; finds the resources from Parameter Store
+│   │   ├── checkin.go                    # dmh checkin
+│   │   ├── config.go                     # dmh config show, dmh config set
+│   │   ├── document.go                   # dmh document get, put and password
+│   │   └── qr.go                         # dmh qr: QR code that sets up the Android app
+│   └── open-document/                    # The recipients' program: opens the document
 │
 ├── internal/                             # Application packages
 │   ├── cli/                              # The dmh CLI's logic, tested with the mocks
 │   │   ├── cli.go                        # Reading the config, check-in, time format
 │   │   ├── config.go                     # Changing the config and the timeout
 │   │   ├── show.go                       # The config show report
-│   │   ├── document.go                   # Document download and upload
+│   │   ├── document.go                   # Document download and upload, encrypted
+│   │   ├── password.go                   # The document password
 │   │   └── *_test.go                     # Tests
+│   │
+│   ├── doccrypt/                         # The document's encryption format
+│   │   ├── doccrypt.go                   # AES-256-GCM, PBKDF2-SHA256 key, name inside
+│   │   └── testdata/                     # Test vector, shared with decrypt.html's test
+│   │
+│   ├── opener/                           # open-document's logic
+│   ├── passphrase/                       # Passphrases from the EFF short word list
+│   ├── prompt/                           # Terminal prompts, the password without echo
 │   │
 │   ├── adapters/                         # AWS service implementations
 │   │   ├── ssm_config_store.go           # Parameter Store adapter
@@ -157,6 +167,11 @@ deadmanshandle/
 │   ├── .tflint.hcl                       # TFLint rules (AWS ruleset)
 │   └── build/                            # Lambda zips (generated)
 │
+├── tools/decrypt/                        # For the recipients
+│   ├── decrypt.html                      # Opens the document in a browser, offline
+│   ├── decrypt.test.mjs                  # Its decryption against the test vector (Node)
+│   └── README.txt                        # Plain-words instructions, in each release
+│
 ├── bin/                                  # Compiled binaries (generated)
 │   ├── http/bootstrap                    # HTTP handler binary
 │   ├── scheduled/bootstrap               # Scheduled handler binary
@@ -225,7 +240,8 @@ deadmanshandle/
   - `dmh config show` and `dmh config set` show and change the settings and
     the state; `set` writes only a valid config
   - `dmh document get` and `dmh document put` download and replace the
-    document, `put` pointing `documentKey` at the upload
+    document, decrypting and encrypting it, `put` pointing `documentKey` at
+    the upload; `dmh document password` sets and shows its password
   - `dmh qr` writes a PNG QR code that sets up the Android app
     (`make qrcode`)
   - Reads the endpoint from the Terraform state and the API key from the
@@ -233,7 +249,12 @@ deadmanshandle/
   - Adds the push settings from a Firebase `google-services.json` with
     `-firebase`
 
-Each `main.go` sets up JSON logging, creates the AWS clients and adapters once
+- **open-document**: The recipients' program, not a Lambda; each release
+  includes it for Windows, macOS and Linux, with `decrypt.html`. It decrypts
+  an emailed `.dmh` file with the password read from AWS, if the recipient
+  has access, or typed
+
+Each Lambda's `main.go` sets up JSON logging, creates the AWS clients and adapters once
 at init, and starts the Lambda runtime.
 
 ### `internal/adapters/` - AWS Service Adapters

@@ -1,4 +1,4 @@
-.PHONY: help build dmh test lint validate clean deploy local qrcode android android-test
+.PHONY: help build dmh open-document test decrypt-test lint validate clean deploy local qrcode android android-test
 
 # Native Windows make runs recipes in cmd.exe, whether or not an sh.exe is on
 # PATH. Elsewhere (macOS, Linux, MSYS2/Cygwin make) they run in sh.
@@ -31,7 +31,9 @@ help:
 	@$(info Available targets:)
 	@$(info $(indent)build       - Build the Lambdas: bin/<function>/bootstrap (linux/arm64))
 	@$(info $(indent)dmh         - Build the dmh CLI for this machine: bin/dmh/dmh)
+	@$(info $(indent)open-document - Build the recipients' program for this machine: bin/recipients/open-document)
 	@$(info $(indent)test        - Run unit tests)
+	@$(info $(indent)decrypt-test - Check decrypt.html against the Go test vector (Node 20+))
 	@$(info $(indent)local       - Run unit tests with coverage)
 	@$(info $(indent)lint        - go vet and golangci-lint)
 	@$(info $(indent)validate    - Validate the Terraform configuration (no backend))
@@ -66,10 +68,20 @@ dmh:
 	@go build -ldflags "$(GO_LDFLAGS)" -o bin/dmh/dmh$(goexe) ./cmd/dmh
 	@echo Built bin/dmh/dmh$(goexe)
 
+# The recipients' program, for this machine; each release has it for every
+# desktop platform, with decrypt.html
+open-document:
+	@go build -ldflags "$(GO_LDFLAGS)" -o bin/recipients/open-document$(goexe) ./cmd/open-document
+	@echo Built bin/recipients/open-document$(goexe)
+
 test:
 	@echo Running tests...
 	@go test -v ./...
 	@echo Tests completed
+
+# decrypt.html's decryption, against internal/doccrypt's test vector
+decrypt-test:
+	@node --test tools/decrypt/decrypt.test.mjs
 
 clean:
 	@echo Cleaning build artifacts...

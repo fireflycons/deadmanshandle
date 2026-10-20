@@ -6,20 +6,141 @@ import (
 	"fmt"
 
 	"github.com/fireflycons/deadmanshandle/internal/cli"
+	"github.com/fireflycons/deadmanshandle/internal/doccrypt"
+	"github.com/fireflycons/deadmanshandle/internal/passphrase"
+	"github.com/fireflycons/deadmanshandle/internal/prompt"
 )
 
 var documentCommands = map[string]command{
-	"get": {"download the document to the current directory", runDocumentGet},
-	"put": {"upload a new document, and point the settings at it", runDocumentPut},
+	"get":      {"download the document to the current directory", runDocumentGet},
+	"put":      {"upload a new document, and point the settings at it", runDocumentPut},
+	"password": {"set or show the password that encrypts the document", runDocumentPassword},
 }
 
 func runDocument(ctx context.Context, g globals, args []string) error {
-	return subcommand(ctx, g, "document", documentCommands, []string{"get", "put"}, args)
+	return subcommand(ctx, g, "document", documentCommands, []string{"get", "put", "password"}, args)
+}
+
+var passwordCommands = map[string]command{
+	"set":  {"make a new password (or choose one), re-encrypting the document", runPasswordSet},
+	"show": {"show the password", runPasswordShow},
+}
+
+func runDocumentPassword(ctx context.Context, g globals, args []string) error {
+	return subcommand(ctx, g, "document password", passwordCommands, []string{"set", "show"}, args)
+}
+
+func runPasswordSet(ctx context.Context, g globals, args []string) error {
+	fs := newFlagSet("document password set", "[flags]")
+	words := fs.Int("words", passphrase.DefaultWords, "number of words in the generated passphrase")
+	choose := fs.Bool("prompt", false, fmt.Sprintf("type your own password instead (at least %d characters, no accented letters)", cli.MinPasswordLength))
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("document password set: unexpected argument %q", fs.Arg(0))
+	}
+
+	var password string
+	if *choose {
+		first, err := prompt.Password("New password: ")
+		if err != nil {
+			return err
+		}
+		again, err := prompt.Password("Again: ")
+		if err != nil {
+			return err
+		}
+		if first != again {
+			return errors.New("document password set: the passwords don't match")
+		}
+		password = first
+	} else {
+		generated, err := passphrase.Generate(*words)
+		if err != nil {
+			return fmt.Errorf("document password set: %w", err)
+		}
+		password = generated
+		// Shown before anything changes, so that it isn't lost if a step fails
+		fmt.Println("Document password:", password)
+		fmt.Println()
+	}
+
+	s, err := newSession(ctx, g)
+	if err != nil {
+		return err
+	}
+	docs, bucket, err := s.documentStore(ctx)
+	if err != nil {
+		return fmt.Errorf("document password set: %w", err)
+	}
+	change, err := cli.SetDocumentPassword(ctx, s.ssm, s.passwordParameter(), s.configParameter(), docs, bucket, password)
+	if err != nil {
+		return fmt.Errorf("document password set: %w", err)
+	}
+
+	fmt.Println("Saved in", s.passwordParameter())
+	switch {
+	case change.Reencrypted:
+		fmt.Printf("s3://%s/%s is now encrypted with it. You'll be emailed that the document\n", bucket, change.Key)
+		fmt.Println("changed, and delivery is held for 24 hours.")
+	case change.Plain:
+		fmt.Printf("s3://%s/%s isn't encrypted; dmh document put encrypts it.\n", bucket, change.Key)
+	case change.Missing:
+		fmt.Println("No document is stored yet; dmh document put encrypts one with it.")
+	}
+	fmt.Println()
+	fmt.Println("Give the password to your recipients now, by hand or on paper, never by email:")
+	fmt.Println("they need it to open the document. If it replaced an older one, they need this")
+	fmt.Println("new one instead.")
+	return nil
+}
+
+func runPasswordShow(ctx context.Context, g globals, args []string) error {
+	fs := newFlagSet("document password show", "[flags]")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() > 0 {
+		return fmt.Errorf("document password show: unexpected argument %q", fs.Arg(0))
+	}
+
+	s, err := newSession(ctx, g)
+	if err != nil {
+		return err
+	}
+	password, found, err := cli.ReadDocumentPassword(ctx, s.ssm, s.passwordParameter())
+	if err != nil {
+		return fmt.Errorf("document password show: %w", err)
+	}
+	if !found {
+		return fmt.Errorf("document password show: no password is set; dmh document password set makes one")
+	}
+	fmt.Println(password)
+	return nil
+}
+
+// documents returns what the document commands work with, asking for the
+// password on the terminal when the stored one can't be used
+func (s *session) documents(ctx context.Context) (cli.Documents, error) {
+	docs, bucket, err := s.documentStore(ctx)
+	if err != nil {
+		return cli.Documents{}, err
+	}
+	return cli.Documents{
+		Store:             s.ssm,
+		ConfigParameter:   s.configParameter(),
+		PasswordParameter: s.passwordParameter(),
+		Transfer:          docs,
+		Bucket:            bucket,
+		Prompt:            prompt.Password,
+	}, nil
 }
 
 func runDocumentGet(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("document get", "[flags]")
 	force := fs.Bool("force", false, "replace a file of the same name")
+	raw := fs.Bool("raw", false, "save the document as stored, without decrypting it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -31,11 +152,11 @@ func runDocumentGet(ctx context.Context, g globals, args []string) error {
 	if err != nil {
 		return err
 	}
-	docs, bucket, err := s.documentStore(ctx)
+	d, err := s.documents(ctx)
 	if err != nil {
 		return fmt.Errorf("document get: %w", err)
 	}
-	file, err := cli.GetDocument(ctx, s.ssm, s.configParameter(), docs, bucket, ".", *force)
+	file, err := cli.GetDocument(ctx, d, ".", *force, *raw)
 	if err != nil {
 		return fmt.Errorf("document get: %w", err)
 	}
@@ -45,7 +166,8 @@ func runDocumentGet(ctx context.Context, g globals, args []string) error {
 
 func runDocumentPut(ctx context.Context, g globals, args []string) error {
 	fs := newFlagSet("document put", "[flags] <file>")
-	key := fs.String("key", "", "S3 key to upload to (default: the file's name)")
+	key := fs.String("key", "", "S3 key to upload to (default: the file's name, plus "+doccrypt.Extension+" unless -plain)")
+	plain := fs.Bool("plain", false, "upload the file as it is, without encrypting it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -58,18 +180,22 @@ func runDocumentPut(ctx context.Context, g globals, args []string) error {
 	if err != nil {
 		return err
 	}
-	docs, bucket, err := s.documentStore(ctx)
+	d, err := s.documents(ctx)
 	if err != nil {
 		return fmt.Errorf("document put: %w", err)
 	}
-	result, err := cli.PutDocument(ctx, s.ssm, s.configParameter(), docs, bucket, fs.Arg(0), *key)
+	result, err := cli.PutDocument(ctx, d, fs.Arg(0), *key, *plain)
 	if err != nil {
 		return fmt.Errorf("document put: %w", err)
 	}
 
-	fmt.Printf("Uploaded %s to s3://%s/%s\n", fs.Arg(0), bucket, result.Key)
+	how := "Uploaded"
+	if result.Encrypted {
+		how = "Encrypted and uploaded"
+	}
+	fmt.Printf("%s %s to s3://%s/%s\n", how, fs.Arg(0), d.Bucket, result.Key)
 	if result.KeyChanged() {
-		fmt.Printf("The settings now name it as the document. The old one is still at s3://%s/%s;\n", bucket, result.PreviousKey)
+		fmt.Printf("The settings now name it as the document. The old one is still at s3://%s/%s;\n", d.Bucket, result.PreviousKey)
 		fmt.Println("delete it if you no longer need it. The change is reported by the next daily run")
 		fmt.Println("if the upload's own notice doesn't come first.")
 	}

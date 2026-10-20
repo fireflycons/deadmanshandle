@@ -50,6 +50,12 @@ func (s *session) configParameter() string {
 	return s.parameter("config")
 }
 
+// passwordParameter is the name of the document password, which dmh creates;
+// Terraform doesn't, so that the password is never in its state
+func (s *session) passwordParameter() string {
+	return s.parameter("document-password")
+}
+
 // lookup reads one of the plain parameters that Terraform keeps up to date
 // (see terraform/parameter_store.tf)
 func (s *session) lookup(ctx context.Context, name string) (string, error) {

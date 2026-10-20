@@ -314,3 +314,39 @@ func TestScheduledHandlerHoldsDeliveryAfterChange(t *testing.T) {
 		t.Errorf("Expected 2 document emails and 1 owner notice after the hold, got %+v", emailSender.SentEmails)
 	}
 }
+
+// An encrypted document's email says how to open it, and the plain one's
+// doesn't
+func TestScheduledHandlerEncryptedDocumentEmail(t *testing.T) {
+	for _, encrypted := range []bool{false, true} {
+		cfg := testConfig()
+		configStore := mocks.NewMockConfigStore()
+		configStore.Data[testParam] = configJSON(t, cfg)
+		stateStore := mocks.NewMockStateStore(triggeredState())
+		documentStore := mocks.NewMockDocumentStore()
+		content := []byte("%PDF the document")
+		if encrypted {
+			content = []byte("DMHE\x01 not really, but it starts like one")
+		}
+		documentStore.SetDocument(testBucket, testKey, content)
+		emailSender := mocks.NewMockEmailSender()
+		service := domain.NewDeadmansHandleServiceWithTime(testNow)
+		handler := NewScheduledEventHandler(configStore, stateStore, documentStore, emailSender, nil, service,
+			NewDocumentWatcher(stateStore, emailSender, nil, service), testParam, testBucket)
+
+		if err := handler.Handle(context.Background()); err != nil {
+			t.Fatalf("Handle failed: %v", err)
+		}
+		for _, email := range emailSender.SentEmails {
+			if email.To == cfg.Owner {
+				continue
+			}
+			if got := strings.Contains(email.Body, "locked with a password"); got != encrypted {
+				t.Errorf("Encrypted %v: expected the opening instructions %v, got %q", encrypted, encrypted, email.Body)
+			}
+			if string(email.Attachments["document.pdf"]) != string(content) {
+				t.Errorf("Expected the document attached as stored")
+			}
+		}
+	}
+}

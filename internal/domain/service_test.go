@@ -396,3 +396,12 @@ func TestAPIGuardEmails(t *testing.T) {
 		})
 	}
 }
+
+func TestEncryptedDocumentBody(t *testing.T) {
+	body := EncryptedDocumentBody("will.pdf.dmh", "owner@example.com")
+	for _, want := range []string{"will.pdf.dmh", "owner@example.com", "locked with a password", "decrypt.html", "never sent by email"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Expected the body to mention %q:\n%s", want, body)
+		}
+	}
+}

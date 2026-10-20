@@ -294,6 +294,22 @@ func (s *DeadmansHandleService) APIReopenedEmail(cfg *config.Config) EmailAction
 	}
 }
 
+// EncryptedDocumentBody replaces the recipients' email when the document,
+// attached as name, is encrypted (which only the content shows, so the
+// scheduled handler decides). It says how to open it, but the password is
+// never sent by email: the owner gives it to the recipients beforehand.
+func EncryptedDocumentBody(name, owner string) string {
+	return "Please find the important document attached. This has been sent as per the deadman's handle protocol, " +
+		"arranged by " + owner + ".\n\n" +
+		"The attachment, " + name + ", is locked with a password. To open it:\n\n" +
+		"  1. Save the attachment to your computer.\n" +
+		"  2. Open it with the program or the page (decrypt.html) you were given for this, and type the password\n" +
+		"     you were given. Use a computer rather than a phone.\n\n" +
+		"The password is never sent by email. If you weren't given it, or the program or page, ask the family, " +
+		"executor or solicitor of the person who arranged this: they may be with their papers. Never send the " +
+		"password to anyone by email, and be wary of anyone who asks for it."
+}
+
 // triggerNoticeBody tells the owner that the document is being sent, so
 // that a false trigger can be noticed and followed up.
 func triggerNoticeBody(timeout time.Time, recipients []string) string {

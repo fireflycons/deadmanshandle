@@ -12,6 +12,10 @@ import (
 // document no longer has the ETag it was checked with
 var ErrDocumentChanged = errors.New("document changed since it was checked")
 
+// ErrNotFound is returned, wrapped, for a parameter or an object that does
+// not exist
+var ErrNotFound = errors.New("not found")
+
 // ErrConditionFailed is returned by a conditional StateStore update when the
 // state has changed since it was read
 var ErrConditionFailed = errors.New("state changed concurrently")

@@ -1,0 +1,8 @@
+{
+  "password": "correct-horse-battery-stäple",
+  "name": "Testament – vérsion 2.txt",
+  "content": "The document. Ünïcödé, and a line break:\nend.",
+  "salt": "AAECAwQFBgcICQoLDA0ODw==",
+  "nonce": "oKGio6Slpqeoqaqr",
+  "iterations": 1000
+}

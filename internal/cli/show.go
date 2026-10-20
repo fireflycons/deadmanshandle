@@ -22,6 +22,9 @@ type Report struct {
 	// could not be read
 	API      string `json:"api,omitempty"`
 	APIGuard string `json:"apiGuard,omitempty"`
+	// "set" or "not set", or the password itself if secrets are shown; empty
+	// if it could not be read
+	DocumentPassword string `json:"documentPassword,omitempty"`
 	// Why the settings or state could not be read or are invalid
 	Problems []string `json:"problems,omitempty"`
 }
@@ -145,6 +148,9 @@ func (r Report) WriteText(w io.Writer, now time.Time) error {
 	row("warnDays", strconv.Itoa(r.Settings.WarnDays))
 	row("apiKey", orNone(r.Settings.APIKey))
 	row("documentKey", orNone(r.Settings.DocumentKey))
+	if r.DocumentPassword != "" {
+		row("documentPassword", r.DocumentPassword)
+	}
 
 	_, _ = fmt.Fprintln(tw, "\nFixed by Terraform")
 	row("endpoint", orNone(r.Deployment.Endpoint))

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open the document</title>
+<!--
+  Opens a document sent by the dead man's handle. Everything happens in this
+  page, on this computer: nothing is sent anywhere, and it works offline.
+  The file format is described in internal/doccrypt/doccrypt.go.
+-->
+<style>
+  :root {
+    --bg: #f7f7f5;
+    --card: #ffffff;
+    --text: #1d1d1b;
+    --muted: #5c5c57;
+    --border: #d6d6d0;
+    --accent: #1f5fa8;
+    --accent-text: #ffffff;
+    --ok-bg: #e6f4ea;
+    --ok-text: #1e5b2e;
+    --bad-bg: #fbe9e7;
+    --bad-text: #8a2a1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615;
+      --card: #20201f;
+      --text: #ececea;
+      --muted: #a8a8a2;
+      --border: #3a3a37;
+      --accent: #6aa5ec;
+      --accent-text: #0d1b2c;
+      --ok-bg: #173822;
+      --ok-text: #b9e5c4;
+      --bad-bg: #3d1d18;
+      --bad-text: #f3c2b9;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 18px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main {
+    max-width: 40rem;
+    margin: 2rem auto;
+    padding: 0 16px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+  }
+  h1 { font-size: 1.6rem; margin: 0 0 0.5rem; }
+  p { margin: 0.5rem 0; }
+  .muted { color: var(--muted); font-size: 0.95rem; }
+  ol { padding-left: 1.4rem; margin: 1rem 0 1.5rem; }
+  li { margin: 0.4rem 0; }
+  label { display: block; font-weight: 600; margin: 1.2rem 0 0.4rem; }
+  .drop {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 1rem;
+    text-align: center;
+  }
+  .drop.over { border-color: var(--accent); }
+  .file-name { font-weight: 600; word-break: break-all; }
+  input[type=password], input[type=text] {
+    width: 100%;
+    font: inherit;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+  }
+  .show { display: flex; gap: 0.5rem; align-items: center; margin-top: 0.4rem; font-size: 0.95rem; color: var(--muted); }
+  button, .button {
+    display: inline-block;
+    font: inherit;
+    font-weight: 600;
+    margin-top: 1.4rem;
+    padding: 0.7rem 1.4rem;
+    border: 0;
+    border-radius: 8px;
+    background: var(--accent);
+    color: var(--accent-text);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .choose { margin-top: 0.5rem; background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  .message { margin-top: 1.4rem; padding: 0.9rem 1rem; border-radius: 8px; }
+  .message.ok { background: var(--ok-bg); color: var(--ok-text); }
+  .message.bad { background: var(--bad-bg); color: var(--bad-text); }
+  .message .button { margin-top: 0.8rem; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="card">
+    <h1>Open the document</h1>
+    <p>This page opens a document sent to you by the dead man's handle. You need the
+      file from the email (its name ends in <strong>.dmh</strong>) and the password you were given.</p>
+    <ol>
+      <li>Save the attachment from the email to your computer.</li>
+      <li>Choose it below, or drag it onto the box.</li>
+      <li>Type the password, then press <strong>Open</strong>. The opened document is saved to your Downloads.</li>
+    </ol>
+    <p class="muted">Nothing leaves this computer: the page works without the internet. Please use a
+      computer rather than a phone.</p>
+
+    <form id="form" autocomplete="off">
+      <label for="file">The document</label>
+      <div class="drop" id="drop">
+        <div id="file-name" class="file-name">No file chosen yet</div>
+        <input id="file" type="file" hidden>
+        <button type="button" class="choose" id="choose">Choose the file…</button>
+      </div>
+
+      <label for="password">Password</label>
+      <input id="password" type="password" spellcheck="false" autocapitalize="off">
+      <div class="show"><input id="show" type="checkbox"><label for="show" style="margin:0;font-weight:400">Show the password as I type</label></div>
+
+      <button type="submit" id="open" disabled>Open</button>
+    </form>
+
+    <div id="message" class="message" role="status" hidden></div>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+// BEGIN decrypt
+// The format, as written by internal/doccrypt: "DMHE", version 1,
+// iterations (uint32 BE), salt (16), nonce (12), then AES-256-GCM with the
+// header as additional data. The plaintext is the name's length (uint16 BE),
+// the name in UTF-8, then the content. The key is PBKDF2-HMAC-SHA256.
+const HEADER_SIZE = 37;
+const MAX_ITERATIONS = 10000000;
+
+class OpenError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+async function decryptDocument(bytes, password) {
+  const magic = [0x44, 0x4d, 0x48, 0x45]; // "DMHE"
+  if (bytes.length < 4 || magic.some((b, i) => bytes[i] !== b)) {
+    throw new OpenError("not-ours", "not an encrypted document");
+  }
+  if (bytes.length < HEADER_SIZE) {
+    throw new OpenError("wrong-password", "too short");
+  }
+  if (bytes[4] !== 1) {
+    throw new OpenError("version", "version " + bytes[4]);
+  }
+  const header = bytes.subarray(0, HEADER_SIZE);
+  const iterations = new DataView(header.buffer, header.byteOffset, HEADER_SIZE).getUint32(5);
+  if (iterations === 0 || iterations > MAX_ITERATIONS) {
+    throw new OpenError("wrong-password", "bad iterations");
+  }
+  const salt = header.subarray(9, 25);
+  const nonce = header.subarray(25, 37);
+
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveKey"]);
+  const key = await crypto.subtle.deriveKey(
+    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+  let plain;
+  try {
+    plain = new Uint8Array(await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: nonce, additionalData: header }, key, bytes.subarray(HEADER_SIZE)));
+  } catch (e) {
+    throw new OpenError("wrong-password", "does not decrypt");
+  }
+  if (plain.length < 2) {
+    throw new OpenError("wrong-password", "too short");
+  }
+  const nameLength = (plain[0] << 8) | plain[1];
+  if (plain.length < 2 + nameLength) {
+    throw new OpenError("wrong-password", "too short");
+  }
+  const name = new TextDecoder("utf-8", { fatal: true }).decode(plain.subarray(2, 2 + nameLength));
+  return { name, content: plain.subarray(2 + nameLength) };
+}
+// END decrypt
+
+// Keeps only the last part of the name, and replaces characters that file
+// systems don't allow, as dmh and open-document do
+function safeName(name) {
+  name = name.split(/[\\/]/).pop().replace(/[\u0000-\u001f<>:"|?*]/g, "_");
+  return name.replace(/[. ]/g, "") === "" ? "document" : name;
+}
+
+(function () {
+  const form = document.getElementById("form");
+  const fileInput = document.getElementById("file");
+  const fileName = document.getElementById("file-name");
+  const drop = document.getElementById("drop");
+  const password = document.getElementById("password");
+  const openButton = document.getElementById("open");
+  const message = document.getElementById("message");
+  let chosen = null;
+
+  function say(kind, html) {
+    message.className = "message " + kind;
+    message.innerHTML = html;
+    message.hidden = false;
+  }
+  function escape(text) {
+    const div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  function update() {
+    openButton.disabled = !chosen || password.value === "";
+  }
+  function choose(file) {
+    chosen = file || null;
+    fileName.textContent = chosen ? chosen.name : "No file chosen yet";
+    message.hidden = true;
+    update();
+  }
+
+  if (!window.crypto || !crypto.subtle) {
+    say("bad", "This browser can't open the document. Please open this page in a current " +
+      "version of Chrome, Edge, Firefox or Safari on a computer.");
+    form.hidden = true;
+    return;
+  }
+
+  document.getElementById("choose").addEventListener("click", () => fileInput.click());
+  fileInput.addEventListener("change", () => choose(fileInput.files[0]));
+  password.addEventListener("input", update);
+  document.getElementById("show").addEventListener("change", (e) => {
+    password.type = e.target.checked ? "text" : "password";
+  });
+  ["dragenter", "dragover"].forEach((type) => drop.addEventListener(type, (e) => {
+    e.preventDefault();
+    drop.classList.add("over");
+  }));
+  ["dragleave", "drop"].forEach((type) => drop.addEventListener(type, () => drop.classList.remove("over")));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    choose(e.dataTransfer.files[0]);
+  });
+  // A file dropped elsewhere on the page shouldn't make the browser open it
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => e.preventDefault());
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!chosen || password.value === "") return;
+    openButton.disabled = true;
+    openButton.textContent = "Opening…";
+    say("ok", "Opening the document…");
+    try {
+      const bytes = new Uint8Array(await chosen.arrayBuffer());
+      const result = await decryptDocument(bytes, password.value);
+      const name = safeName(result.name);
+      const url = URL.createObjectURL(new Blob([result.content], { type: "application/octet-stream" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.className = "button";
+      link.textContent = "Save it again";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      say("ok", "<strong>Done.</strong> The document <strong>" + escape(name) + "</strong> has been saved to " +
+        "your Downloads. If you can't find it, save it again:");
+      message.appendChild(link);
+    } catch (err) {
+      const code = err && err.code;
+      if (code === "not-ours") {
+        say("bad", "This file isn't an encrypted document from the dead man's handle, so there's nothing " +
+          "to open. Its name should end in <strong>.dmh</strong>. Try opening it as it is.");
+      } else if (code === "wrong-password") {
+        say("bad", "That password didn't open it. Check it with the person who gave it to you, and try again. " +
+          "Capital letters and dashes matter.");
+      } else if (code === "version") {
+        say("bad", "This document was made by a newer version of the dead man's handle. Please get the newest " +
+          "copy of this page from the person who gave it to you.");
+      } else {
+        say("bad", "Something went wrong opening the document: " + escape(String(err && err.message || err)));
+      }
+    } finally {
+      openButton.textContent = "Open";
+      update();
+    }
+  });
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -72,6 +73,10 @@ func (s *S3DocumentStore) Download(ctx context.Context, bucket, key string) (io.
 		Bucket: &bucket,
 		Key:    &key,
 	})
+	var noSuchKey *types.NoSuchKey
+	if errors.As(err, &noSuchKey) {
+		return nil, fmt.Errorf("%w: %w", ports.ErrNotFound, err)
+	}
 	if err != nil {
 		return nil, err
 	}
