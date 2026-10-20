@@ -28,8 +28,9 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
 - **CLI**: `dmh` manages a deployment with your AWS credentials: it checks in
   (`dmh checkin`), shows and changes the settings and state (`dmh config show`,
   `dmh config set`), downloads and replaces the document (`dmh document get`,
-  `dmh document put`), sets its password (`dmh document password`), closes and reopens the check-in API (`dmh api`) and
-  makes the app's setup QR code (`dmh qr`); see
+  `dmh document put`), sets its password (`dmh document password`), closes and reopens the check-in API (`dmh api`),
+  sends the recipients a test email and checks that SES will deliver to them
+  (`dmh recipients`) and makes the app's setup QR code (`dmh qr`); see
   [Updating the Configuration](DEPLOYMENT.md#updating-the-configuration)
 
 ## How It Works

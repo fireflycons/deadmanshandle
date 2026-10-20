@@ -32,7 +32,7 @@ follow the DEPLOYMENT.md linked from their notes.)
 Bash (Linux, macOS, Git Bash):
 
 ```bash
-VERSION=v0.6.0   # the release you want
+VERSION=v1.0.0   # the release you want
 BASE="https://github.com/fireflycons/deadmanshandle/releases/download/$VERSION"
 curl -fsSLO "$BASE/deadmanshandle-$VERSION.zip"
 curl -fsSLO "$BASE/SHA256SUMS"
@@ -42,7 +42,7 @@ sha256sum -c SHA256SUMS   # macOS: shasum -a 256 -c SHA256SUMS
 PowerShell:
 
 ```powershell
-$Version = 'v0.6.0'   # the release you want
+$Version = 'v1.0.0'   # the release you want
 $Base = "https://github.com/fireflycons/deadmanshandle/releases/download/$Version"
 Invoke-WebRequest "$Base/deadmanshandle-$Version.zip" -OutFile "deadmanshandle-$Version.zip"
 Invoke-WebRequest "$Base/SHA256SUMS" -OutFile SHA256SUMS
@@ -50,7 +50,7 @@ $hash = (-split (Get-Content SHA256SUMS))[0]
 if ((Get-FileHash "deadmanshandle-$Version.zip" -Algorithm SHA256).Hash -ne $hash) { throw 'Checksum mismatch' }
 ```
 
-With the GitHub CLI, `gh release download v0.6.0 -R fireflycons/deadmanshandle`
+With the GitHub CLI, `gh release download v1.0.0 -R fireflycons/deadmanshandle`
 downloads both.
 
 ### 2. Unzip
@@ -69,8 +69,8 @@ The result is laid out like the repository, with the Lambdas already where
 Terraform expects them:
 
 ```
-deadmanshandle-v0.6.0/
-├── app/deadmanshandle-v0.6.0.apk     # the Android app; see Setting Up the Android App
+deadmanshandle-v1.0.0/
+├── app/deadmanshandle-v1.0.0.apk     # the Android app; see Setting Up the Android App
 ├── bin/{http,scheduled,docwatch,alarmpush,apiguard}/bootstrap   # the Lambdas, linux/arm64
 ├── dmh/                              # the CLI that manages the deployment, for each platform
 ├── recipients/                       # for your recipients: decrypt.html, open-document, README.txt
@@ -483,7 +483,7 @@ seven times), then USB debugging in them, connect the cable and accept the
 prompt on the phone. Then, in the unzipped release:
 
 ```bash
-adb install -r app/deadmanshandle-v0.6.0.apk
+adb install -r app/deadmanshandle-v1.0.0.apk
 ```
 
 **To update**, install a later release's APK the same way; the config is
@@ -658,6 +658,25 @@ with and so hold off delivery.
 
 Try it yourself first: `dmh document get -raw` saves the stored `.dmh` file,
 which `decrypt.html` should open with the password.
+
+**Send the recipients a test email.** `dmh recipients test` sends you and
+each recipient (or only those named) an email like the delivery one, with a
+short test document locked with the current password. It changes nothing in
+the deadman's handle. Ask each recipient to check that it reached their inbox
+rather than spam or junk (and if not, to mark it as not spam and add the
+sender to their contacts), and that the attachment opens with the program or
+page and the password. Do it once they have the tools and the password, and
+again whenever the recipients or the password change.
+
+`dmh recipients status` shows whether SES will deliver to you and to each
+recipient. While your account is in the SES sandbox, SES delivers only to
+verified addresses, or addresses in verified domains, so the real email would
+be refused for anyone else. For a recipient who isn't verified,
+`dmh recipients test` asks SES to verify the address: SES emails them a link
+(from no-reply-aws@amazon.com), and once they have followed it, run the test
+again. A link not followed within 24 hours expires; the next test sends a new
+one. To deliver to any address instead, request production access in the SES
+console (Account dashboard).
 
 If you change the password, give the recipients the new one. A copy of the
 document sent earlier still needs the password it was sent with.

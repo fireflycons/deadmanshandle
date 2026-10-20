@@ -397,6 +397,21 @@ func TestAPIGuardEmails(t *testing.T) {
 	}
 }
 
+func TestTestEmail(t *testing.T) {
+	body := TestEmailBody("dmh-test.txt.dmh", "owner@example.com")
+	for _, want := range []string{"dmh-test.txt.dmh", "owner@example.com", "Nothing has happened", "spam", "decrypt.html", "never sent by email"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Expected the body to mention %q:\n%s", want, body)
+		}
+	}
+	document := string(TestDocument("owner@example.com", time.Date(2026, 10, 20, 9, 30, 0, 0, time.UTC)))
+	for _, want := range []string{"owner@example.com", "Tuesday 20 October 2026 at 09:30 UTC"} {
+		if !strings.Contains(document, want) {
+			t.Errorf("Expected the document to mention %q:\n%s", want, document)
+		}
+	}
+}
+
 func TestEncryptedDocumentBody(t *testing.T) {
 	body := EncryptedDocumentBody("will.pdf.dmh", "owner@example.com")
 	for _, want := range []string{"will.pdf.dmh", "owner@example.com", "locked with a password", "decrypt.html", "never sent by email"} {

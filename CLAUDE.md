@@ -29,6 +29,14 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
     the check-in API, and sets the flood guard's check interval.
   - `qr` writes the app's setup QR code (`make qrcode`; `QRFLAGS=-aws` reads
     Parameter Store, `-firebase` adds the push settings).
+  - `recipients status|test [recipient...]`: whether SES will deliver to the
+    owner and each recipient (the sandbox, and identities verified by
+    address or domain), and a test email, always to the owner too, with
+    `dmh-test.txt.dmh` locked with the document password. It changes no
+    state. In the sandbox, an unverified address gets an SES email identity
+    (a verification link) instead, and an expired one is recreated. The SES
+    v2 client is in `internal/adapters/sesaccount`, apart from `adapters`, so
+    the Lambdas don't link it.
   - Each command looks up only the parameters it needs, so `config set`
     works before an upgrade's `terraform apply`.
 - `cmd/open-document` is the recipients' program (logic in
