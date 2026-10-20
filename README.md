@@ -115,7 +115,9 @@ Response:
 - The document is encrypted before it leaves your computer (AES-256-GCM, with
   a PBKDF2-SHA256 key from the password), so neither S3 nor email sees it in
   clear. The password is a SecureString parameter that only `dmh` reads: it
-  is never in the Terraform state, and no Lambda can read it
+  is never in the Terraform state, and no Lambda can read it. A recipient
+  with AWS access can be given the `DMH-<app>-Recipient` policy, which
+  reads only the password
 - The SES sender domain is verified with DKIM by Terraform
 
 ## Documentation

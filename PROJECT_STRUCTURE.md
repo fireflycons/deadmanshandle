@@ -152,6 +152,7 @@ deadmanshandle/
 │   ├── variables.tf                      # Input variables
 │   ├── data.tf                           # Data sources
 │   ├── iam.tf                            # IAM roles, one per Lambda
+│   ├── iam_recipient.tf                  # Recipients' policy: read the document password
 │   ├── lambda.tf                         # Lambda functions and log groups
 │   ├── api_gateway.tf                    # HTTP API Gateway
 │   ├── s3.tf                             # S3 bucket configuration
@@ -357,6 +358,8 @@ See [DEVELOPMENT.md](DEVELOPMENT.md#android-app) for building it.
 Terraform files defining AWS resources:
 - **provider.tf**: AWS provider configuration
 - **iam.tf**: One execution role per Lambda, each with only its permissions
+- **iam_recipient.tf**: The `DMH-<app>-Recipient` policy, which lets
+  open-document read the document password and nothing else
 - **lambda.tf**: Lambda function definitions, archiving and log groups
 - **api_gateway.tf**: HTTP API and routes
 - **s3.tf**: S3 bucket with security settings
