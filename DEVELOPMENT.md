@@ -619,9 +619,16 @@ The Android app's `versionName` is `VERSION`, and its `versionCode` is
 
 ## Architecture Diagram
 
-`docs/architecture.png` is drawn by `tools/architecture_diagram.py`, using
-Python's `diagrams` package (official AWS icons) and Graphviz. When the
-infrastructure changes, edit the script and rerun it; its docstring says how.
+`docs/architecture.svg` is drawn by `tools/architecture_diagram.py`, using
+Python's `diagrams` package and Graphviz for the layout, and the official SVG
+icons from AWS's [Architecture Icons](https://aws.amazon.com/architecture/icons/)
+package, which the script embeds so the SVG needs no other files.
+`docs/architecture.html` shows it with a legend; it is edited by hand.
+
+When the infrastructure changes, edit the script and rerun it; its docstring
+says how, and which icon package release it was drawn with. Graphviz lays the
+same diagram out differently from run to run, so rerun it until the layout
+reads well, and check the page in a browser before committing.
 
 ## Troubleshooting Development
 

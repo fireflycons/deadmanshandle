@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dead Man's Handle architecture</title>
+<!-- Shows architecture.svg, which tools/architecture_diagram.py draws; this page is edited by hand -->
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --text: #232f3e;
+    --muted: #545b64;
+    --panel: #ffffff;
+    --border: #d5dbdb;
+    --grey: #545b64;
+    --pink: #c7166f;
+    --green: #1e8900;
+    --red: #d13212;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161d26;
+      --text: #e9ebed;
+      --muted: #a8b0ba;
+      --panel: #232f3e;
+      --border: #3b4654;
+      --grey: #a8b0ba;
+      --pink: #ff5ca8;
+      --green: #4cc33f;
+      --red: #ff6b4a;
+    }
+  }
+  body {
+    margin: 0;
+    padding: 24px 16px 40px;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 1.6em; margin: 0 0 4px; }
+  p { margin: 0 0 12px; color: var(--muted); }
+  a { color: inherit; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 24px;
+    margin: 16px 0;
+    padding: 12px 16px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    list-style: none;
+  }
+  .legend li { display: flex; align-items: center; gap: 8px; }
+  .legend svg { flex: none; }
+  .grey { color: var(--grey); }
+  .pink { color: var(--pink); }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  figure { margin: 0; }
+  figure a { display: block; }
+  /* The diagram keeps its white background in both themes */
+  figure img {
+    display: block;
+    width: 100%;
+    height: auto;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  figcaption, footer { margin-top: 8px; font-size: 0.85em; color: var(--muted); }
+  footer { margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Dead Man's Handle architecture</h1>
+  <p>The AWS resources, the flows between them, and what reaches the owner and the recipients.</p>
+
+  <ul class="legend">
+    <li class="pink"><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="2"/></svg>The owner's actions, uploads and push</li>
+    <li class="green"><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="2"/></svg>Email</li>
+    <li class="red"><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="2"/></svg>Alarms and the flood guard</li>
+    <li class="grey"><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="2"/></svg>Within AWS</li>
+    <li class="grey"><svg width="40" height="10" aria-hidden="true"><line x1="0" y1="5" x2="40" y2="5" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4"/></svg>The CLI working on AWS directly, DKIM signing, failed deliveries</li>
+  </ul>
+
+  <figure>
+    <a href="architecture.svg" title="Open the diagram at full size">
+      <img src="architecture.svg" alt="AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, the config, document password and state in Parameter Store and DynamoDB, email through SES, alarms to the owner, and optional push notifications to the app through SNS and Firebase Cloud Messaging. Recipients open the encrypted document with open-document or decrypt.html.">
+    </a>
+    <figcaption>Select the diagram to open it at full size, then zoom in.</figcaption>
+  </figure>
+
+  <footer>
+    Icons: AWS Architecture Icons (07312026 release); the Firebase Cloud Messaging icon is from the
+    <a href="https://diagrams.mingrammer.com/">diagrams</a> package.
+  </footer>
+</main>
+</body>
+</html>
