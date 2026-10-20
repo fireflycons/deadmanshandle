@@ -68,3 +68,8 @@ output "eventbridge_rule_name" {
   description = "EventBridge rule name for daily check"
   value       = aws_cloudwatch_event_rule.daily_check.name
 }
+
+output "recipient_policy_arn" {
+  description = "IAM policy to attach to a recipient's user or role, so open-document reads the document password from Parameter Store"
+  value       = aws_iam_policy.recipient.arn
+}

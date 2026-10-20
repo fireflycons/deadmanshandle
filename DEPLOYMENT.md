@@ -641,6 +641,21 @@ the recipient. So give each recipient, now:
 Neither is attached to the delivery email: emails with script attachments are
 often blocked or marked as spam.
 
+**Giving a recipient AWS access.** A recipient with an IAM user (or role) in
+your account doesn't need the password typed: attach the
+`DMH-<app>-Recipient` policy, which Terraform creates, and `open-document`
+reads the password from Parameter Store with their credentials:
+
+```bash
+aws iam attach-user-policy --user-name <recipient>   --policy-arn "$(terraform output -raw recipient_policy_arn)"
+```
+
+They run `open-document` as usual. It takes the region from their AWS
+settings; `-region` is only needed if those don't set one (and `-app` if you
+changed `application_name`). The policy allows reading only the document password,
+not the config: that holds the API key, which a recipient could check in
+with and so hold off delivery.
+
 Try it yourself first: `dmh document get -raw` saves the stored `.dmh` file,
 which `decrypt.html` should open with the password.
 

@@ -161,6 +161,11 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
   - The password is the SecureString `/<app>/document-password`, which only
     `dmh` creates, so it's never in Terraform state and no Lambda role can
     read it. It is never emailed: the owner gives it to recipients.
+  - Terraform creates the managed policy `DMH-<app>-Recipient`
+    (`iam_recipient.tf`), only `ssm:GetParameter` on the password, for a
+    recipient's IAM user so `open-document` reads it from AWS. It must never
+    grant the config, whose API key would let a recipient check in. The
+    owner is assumed to have full access, so there are no owner policies.
   - Generated passphrases are 6 EFF short-list words; owner-chosen ones are
     printable ASCII of 12 or more, since a Windows console may pass other
     characters in its code page.
