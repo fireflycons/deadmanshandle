@@ -2,7 +2,17 @@
 
 ## Architecture
 
-![AWS architecture: check-in through API Gateway, a daily EventBridge run, S3 upload events, config in SSM, state in DynamoDB, email through SES, alarms to the owner, and optional push notifications to the app through SNS and Firebase Cloud Messaging](docs/architecture.png)
+The AWS architecture diagram is [docs/architecture.html](docs/architecture.html):
+check-in through API Gateway, a daily EventBridge run, S3 upload events, the
+config, document password and state in Parameter Store and DynamoDB, email
+through SES, alarms to the owner, optional push notifications to the app
+through SNS and Firebase Cloud Messaging, and how recipients open the
+encrypted document.
+
+To view it, open `docs/architecture.html` in a browser from a clone of the
+repository, or from the source code zip of a release. GitHub shows an HTML
+file's source rather than the page, but it does display the diagram on its
+own: open [docs/architecture.svg](docs/architecture.svg).
 
 The diagram is drawn by `tools/architecture_diagram.py`; see
 [DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
@@ -181,10 +191,11 @@ deadmanshandle/
 │   └── apiguard/bootstrap                # API guard handler binary
 │
 ├── docs/
-│   └── architecture.png                  # AWS architecture diagram
+│   ├── architecture.html                 # AWS architecture diagram: open in a browser
+│   └── architecture.svg                  # The diagram itself, which the page shows
 │
 ├── tools/
-│   └── architecture_diagram.py           # Draws docs/architecture.png (Python, diagrams)
+│   └── architecture_diagram.py           # Draws docs/architecture.svg (Python, diagrams)
 │
 ├── go.mod                                # Go module definition
 ├── go.sum                                # Go dependencies checksums
