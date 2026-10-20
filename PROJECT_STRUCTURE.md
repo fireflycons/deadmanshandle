@@ -74,6 +74,7 @@ deadmanshandle/
 │   │   ├── checkin.go                    # dmh checkin
 │   │   ├── config.go                     # dmh config show, dmh config set
 │   │   ├── document.go                   # dmh document get, put and password
+│   │   ├── recipients.go                 # dmh recipients status and test: SES delivery, test email
 │   │   └── qr.go                         # dmh qr: QR code that sets up the Android app
 │   └── open-document/                    # The recipients' program: opens the document
 │
@@ -105,7 +106,8 @@ deadmanshandle/
 │   │   ├── ses_email_sender_test.go      # MIME message tests
 │   │   ├── sns_push_sender.go            # SNS mobile push adapter (FCM)
 │   │   ├── sns_push_sender_test.go       # Push message tests
-│   │   └── api_key_validator.go          # API key validation
+│   │   ├── api_key_validator.go          # API key validation
+│   │   └── sesaccount/                   # SES sandbox and identities, for dmh only
 │   │
 │   ├── config/                           # Configuration model
 │   │   ├── config.go                     # Config structure, parsing and validation
@@ -283,6 +285,10 @@ Implements the port interfaces using AWS SDK:
 - **SNSPushSender**: Pushes to the app through an SNS platform application for
   FCM, creating the token's endpoint on demand
 - **SimpleAPIKeyValidator**: Validates API keys with constant-time comparison
+- **sesaccount.Account** (its own package, so the Lambdas don't link the SES
+  v2 client): whether the account is in the SES sandbox, the identities'
+  verification, and starting an address's verification, for
+  `dmh recipients`
 
 ### `internal/config/` - Configuration Model
 - Defines the Config struct matching Parameter Store JSON, and the State
@@ -343,8 +349,8 @@ Defines contracts for external dependencies:
 - What `cmd/dmh` does, kept apart from the flags and AWS clients so that it
   can be tested with the mocks
 - Its own small interfaces (`ConfigReadWriter`, `StateEditor`,
-  `DocumentTransfer`) for the writes only the CLI makes, which the adapters
-  implement
+  `DocumentTransfer`, `SESAccount`) for what only the CLI does, which the
+  adapters implement
 
 ### `internal/qrconfig/` - Setup QR Code
 - Builds the QR code's JSON payload, `{"v":1,"endpoint":"…","apiKey":"…"}`,

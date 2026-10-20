@@ -10,9 +10,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/eventbridge"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/ses"
+	"github.com/aws/aws-sdk-go-v2/service/sesv2"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
 	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/fireflycons/deadmanshandle/internal/adapters"
+	"github.com/fireflycons/deadmanshandle/internal/adapters/sesaccount"
 	"github.com/fireflycons/deadmanshandle/internal/cli"
 	"github.com/fireflycons/deadmanshandle/internal/ports"
 )
@@ -22,6 +25,7 @@ var (
 	_ cli.ConfigReadWriter = (*adapters.SSMConfigStore)(nil)
 	_ cli.StateEditor      = (*adapters.DynamoDBStateStore)(nil)
 	_ cli.DocumentTransfer = (*adapters.S3DocumentStore)(nil)
+	_ cli.SESAccount       = (*sesaccount.Account)(nil)
 )
 
 // session holds the AWS clients of one command. Each command looks up only
@@ -106,4 +110,18 @@ func (s *session) api(ctx context.Context) (*cli.APIStage, *adapters.APIGatewayG
 		schedule = adapters.NewEventRuleSchedule(eventbridge.NewFromConfig(s.aws), stage.GuardRule)
 	}
 	return stage, gate, schedule, nil
+}
+
+// sesAccount returns the SES account's sandbox state and identities
+func (s *session) sesAccount() *sesaccount.Account {
+	return sesaccount.New(sesv2.NewFromConfig(s.aws))
+}
+
+// emailSender sends from the sender address Terraform set, as the Lambdas do
+func (s *session) emailSender(ctx context.Context) (*adapters.SESEmailSender, error) {
+	sender, err := s.lookup(ctx, "sender-email")
+	if err != nil {
+		return nil, err
+	}
+	return adapters.NewSESEmailSender(ses.NewFromConfig(s.aws), sender), nil
 }

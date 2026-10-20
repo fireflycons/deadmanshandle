@@ -310,6 +310,32 @@ func EncryptedDocumentBody(name, owner string) string {
 		"password to anyone by email, and be wary of anyone who asks for it."
 }
 
+// TestEmailSubject is the subject of the test email, which dmh recipients
+// test sends to the owner and the recipients
+const TestEmailSubject = "Deadman's Handle Test Email"
+
+// TestEmailBody is the test email's text: a rehearsal of the document's
+// delivery, with a test document, attached as name, locked with the real
+// password
+func TestEmailBody(name, owner string) string {
+	return "This is a test of the deadman's handle arranged by " + owner + ". Nothing has happened to them: " +
+		"they sent this so that you can check you will receive the real document, and open it.\n\n" +
+		"  1. Check that this email arrived in your inbox. If it was in spam or junk, mark it as not spam, " +
+		"and add the sender to your contacts, so that the real one gets through.\n" +
+		"  2. Save the attachment, " + name + ", to your computer, and open it with the program or the page " +
+		"(decrypt.html) you were given for this, and the password you were given. Use a computer rather " +
+		"than a phone. It holds a short test message.\n" +
+		"  3. Tell " + owner + " whether both worked.\n\n" +
+		"The password is never sent by email. If you weren't given it, or the program or page, ask " + owner + "."
+}
+
+// TestDocument is the content of the test document, as of sentAt
+func TestDocument(owner string, sentAt time.Time) []byte {
+	return []byte("This is a test of the deadman's handle arranged by " + owner + ".\n\n" +
+		"If you can read this, you can open the real document the same way.\n\n" +
+		"Sent " + sentAt.UTC().Format("Monday 2 January 2006 at 15:04 MST") + ".\n")
+}
+
 // triggerNoticeBody tells the owner that the document is being sent, so
 // that a false trigger can be noticed and followed up.
 func triggerNoticeBody(timeout time.Time, recipients []string) string {

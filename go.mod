@@ -12,6 +12,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.55.3
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.114.1
 	github.com/aws/aws-sdk-go-v2/service/ses v1.42.2
+	github.com/aws/aws-sdk-go-v2/service/sesv2 v1.79.2
 	github.com/aws/aws-sdk-go-v2/service/sns v1.47.5
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.79.1
 	github.com/aws/smithy-go v1.28.5

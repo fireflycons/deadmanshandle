@@ -332,3 +332,29 @@ type MockAlarmStates struct {
 func (m *MockAlarmStates) InAlarm(ctx context.Context, alarmName string) (bool, error) {
 	return m.InAlarmNames[alarmName], nil
 }
+
+// MockSESAccount is a mock implementation of the CLI's SESAccount (not a
+// port, and the CLI's tests import this package, so it isn't checked above)
+type MockSESAccount struct {
+	InSandbox  bool
+	MaxRate    float64
+	Identities map[string]string // Identity to its verification status
+	Verified   []string          // Addresses passed to VerifyAddress
+	VerifyErr  error             // Returned by VerifyAddress when set
+}
+
+func (m *MockSESAccount) Sandbox(ctx context.Context) (bool, float64, error) {
+	return m.InSandbox, m.MaxRate, nil
+}
+
+func (m *MockSESAccount) IdentityStatus(ctx context.Context, identity string) (string, error) {
+	return m.Identities[identity], nil
+}
+
+func (m *MockSESAccount) VerifyAddress(ctx context.Context, address string) error {
+	if m.VerifyErr != nil {
+		return m.VerifyErr
+	}
+	m.Verified = append(m.Verified, address)
+	return nil
+}
