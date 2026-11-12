@@ -125,6 +125,7 @@ Response:
 
 - [QUICKSTART.md](docs/QUICKSTART.md): a first deployment
 - [DEPLOYMENT.md](docs/DEPLOYMENT.md): deploying, configuring and running it
+- [CLI.md](docs/CLI.md): the `dmh` CLI's commands and flags
 - [DEVELOPMENT.md](docs/DEVELOPMENT.md): working with the source: building the
   Lambdas and the Android app, testing, CI and releases
 - [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md): the architecture and the

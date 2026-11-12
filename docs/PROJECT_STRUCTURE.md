@@ -195,6 +195,7 @@ deadmanshandle/
 ├── docs/
 │   ├── QUICKSTART.md                     # Quick start guide
 │   ├── DEPLOYMENT.md                     # Deployment guide
+│   ├── CLI.md                            # dmh CLI reference
 │   ├── DEVELOPMENT.md                    # Development guide
 │   ├── PROJECT_STRUCTURE.md              # This file
 │   ├── architecture.html                 # AWS architecture diagram: open in a browser

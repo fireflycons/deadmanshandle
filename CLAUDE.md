@@ -5,7 +5,8 @@
 A "dead man's handle": the owner checks in periodically, from an Android app
 or over the HTTP API. If they stop, a daily scheduled run emails a document
 from S3 to a list of recipients. User-facing docs: README, and in `docs/`
-DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
+DEPLOYMENT (including app setup), CLI (the `dmh` reference, to keep in step
+with `cmd/dmh`), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 
 ## Layout
 
