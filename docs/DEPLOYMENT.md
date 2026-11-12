@@ -345,7 +345,7 @@ per client. API Gateway throttles on a best-effort basis, so rapid calls are
 mostly, but not always, rejected with HTTP 429.
 
 The response holds the new deadline; see
-[API Usage](README.md#check-in-endpoint) for its format.
+[API Usage](../README.md#check-in-endpoint) for its format.
 
 ### 2. Upload Document to S3
 

@@ -2,7 +2,7 @@
 
 ## Architecture
 
-The AWS architecture diagram is [docs/architecture.html](docs/architecture.html):
+The AWS architecture diagram is [docs/architecture.html](architecture.html):
 check-in through API Gateway, a daily EventBridge run, S3 upload events, the
 config, document password and state in Parameter Store and DynamoDB, email
 through SES, alarms to the owner, optional push notifications to the app
@@ -12,7 +12,7 @@ encrypted document.
 To view it, open `docs/architecture.html` in a browser from a clone of the
 repository, or from the source code zip of a release. GitHub shows an HTML
 file's source rather than the page, but it does display the diagram on its
-own: open [docs/architecture.svg](docs/architecture.svg).
+own: open [docs/architecture.svg](architecture.svg).
 
 The diagram is drawn by `tools/architecture_diagram.py`; see
 [DEVELOPMENT.md](DEVELOPMENT.md#architecture-diagram).
@@ -193,6 +193,10 @@ deadmanshandle/
 │   └── apiguard/bootstrap                # API guard handler binary
 │
 ├── docs/
+│   ├── QUICKSTART.md                     # Quick start guide
+│   ├── DEPLOYMENT.md                     # Deployment guide
+│   ├── DEVELOPMENT.md                    # Development guide
+│   ├── PROJECT_STRUCTURE.md              # This file
 │   ├── architecture.html                 # AWS architecture diagram: open in a browser
 │   └── architecture.svg                  # The diagram itself, which the page shows
 │
@@ -212,10 +216,6 @@ deadmanshandle/
 │
 ├── LICENSE                               # MIT licence
 ├── README.md                             # Project documentation
-├── QUICKSTART.md                         # Quick start guide
-├── DEPLOYMENT.md                         # Deployment guide
-├── DEVELOPMENT.md                        # Development guide
-├── PROJECT_STRUCTURE.md                  # This file
 ├── config.example.json                   # Example configuration
 └── config.json                           # Configuration (git-ignored)
 ```
@@ -461,4 +461,4 @@ The tools needed to build are in
 
 ## Security Considerations
 
-See [README.md](README.md#security-considerations).
+See [README.md](../README.md#security-considerations).

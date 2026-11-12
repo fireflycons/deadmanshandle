@@ -7,7 +7,7 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
 - **HTTP API Check-in**: Owner checks in via HTTP API to reset timeout
 - **Android App**: Checks in with a fingerprint or the screen lock, and is set
   up by scanning a QR code; see
-  [Setting Up the Android App](DEPLOYMENT.md#setting-up-the-android-app)
+  [Setting Up the Android App](docs/DEPLOYMENT.md#setting-up-the-android-app)
 - **Scheduled Event Processing**: Daily EventBridge event checks timeout and sends warnings
 - **Document Distribution**: On timeout, the document in S3 is emailed to the
   recipients
@@ -15,23 +15,23 @@ A Golang AWS Lambda application that implements a deadman's handle - a mechanism
   with a password you give your recipients beforehand, never by email. They
   open it with `decrypt.html`, a page that works offline in any browser, or
   the `open-document` program, both in each release; see
-  [Preparing Your Recipients](DEPLOYMENT.md#preparing-your-recipients)
+  [Preparing Your Recipients](docs/DEPLOYMENT.md#preparing-your-recipients)
 - **Warning Emails**: Owner is warned daily once the timeout is within `warnDays`
 - **Alarms**: The owner is emailed if the daily run fails or does not run, or if
   the check-in API is flooded
 - **Flood Guard**: A flood closes the check-in API until it stops, so the
   requests go no further than API Gateway; see
-  [Closing the API in a Flood](DEPLOYMENT.md#closing-the-api-in-a-flood)
+  [Closing the API in a Flood](docs/DEPLOYMENT.md#closing-the-api-in-a-flood)
 - **Push Notifications** (optional): The owner's notices and the alarms are
   also pushed to the Android app, through SNS and Firebase Cloud Messaging; see
-  [Push Notifications](DEPLOYMENT.md#5-push-notifications-optional)
+  [Push Notifications](docs/DEPLOYMENT.md#5-push-notifications-optional)
 - **CLI**: `dmh` manages a deployment with your AWS credentials: it checks in
   (`dmh checkin`), shows and changes the settings and state (`dmh config show`,
   `dmh config set`), downloads and replaces the document (`dmh document get`,
   `dmh document put`), sets its password (`dmh document password`), closes and reopens the check-in API (`dmh api`),
   sends the recipients a test email and checks that SES will deliver to them
   (`dmh recipients`) and makes the app's setup QR code (`dmh qr`); see
-  [Updating the Configuration](DEPLOYMENT.md#updating-the-configuration)
+  [Updating the Configuration](docs/DEPLOYMENT.md#updating-the-configuration)
 
 ## How It Works
 
@@ -67,7 +67,7 @@ replaced while the run is in progress, nothing is sent and the run's retry
 reports the change first.
 
 For the architecture diagram, the AWS services used and where the state is
-kept, see [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md#architecture).
+kept, see [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md#architecture).
 
 ## Deployment
 
@@ -76,8 +76,8 @@ You don't need to build anything: each
 pre-built Lambdas, the Terraform configuration, the example config, the
 Android app and the `dmh` CLI. See:
 
-- [QUICKSTART.md](QUICKSTART.md): up and running in about 10 minutes
-- [DEPLOYMENT.md](DEPLOYMENT.md): the full guide, including the configuration
+- [QUICKSTART.md](docs/QUICKSTART.md): up and running in about 10 minutes
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md): the full guide, including the configuration
   rules, setting up the Android app, push notifications, updating the
   configuration and troubleshooting
 
@@ -123,11 +123,11 @@ Response:
 
 ## Documentation
 
-- [QUICKSTART.md](QUICKSTART.md): a first deployment
-- [DEPLOYMENT.md](DEPLOYMENT.md): deploying, configuring and running it
-- [DEVELOPMENT.md](DEVELOPMENT.md): working with the source: building the
+- [QUICKSTART.md](docs/QUICKSTART.md): a first deployment
+- [DEPLOYMENT.md](docs/DEPLOYMENT.md): deploying, configuring and running it
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md): working with the source: building the
   Lambdas and the Android app, testing, CI and releases
-- [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md): the architecture and the
+- [PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md): the architecture and the
   layout of the repository
 
 ## License

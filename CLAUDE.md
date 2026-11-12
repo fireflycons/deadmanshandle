@@ -4,8 +4,8 @@
 
 A "dead man's handle": the owner checks in periodically, from an Android app
 or over the HTTP API. If they stop, a daily scheduled run emails a document
-from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
-(including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
+from S3 to a list of recipients. User-facing docs: README, and in `docs/`
+DEPLOYMENT (including app setup), QUICKSTART, DEVELOPMENT, PROJECT_STRUCTURE.
 
 ## Layout
 
@@ -82,7 +82,7 @@ from S3 to a list of recipients. User-facing docs: README, DEPLOYMENT
     in `deployment`; Terraform still accepts it there.
   - Terraform only creates the parameter and the state item
     (`ignore_changes`). Later changes go through `dmh config set`, which
-    validates the result before writing it (DEPLOYMENT.md).
+    validates the result before writing it (docs/DEPLOYMENT.md).
   - `/deadmanshandle/api-endpoint`, `document-bucket`, `state-table` and
     `sender-email` are plain parameters that Terraform keeps up to date, so
     the CLI can find the resources from the app name alone.
