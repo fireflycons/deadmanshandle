@@ -110,5 +110,5 @@ emailed whenever it changes; see
 - **Removing it**: see [Cleanup](DEPLOYMENT.md#cleanup)
 - **Cost**: well under $1 a month; see
   [Cost Estimation](DEPLOYMENT.md#cost-estimation)
-- **How it works**: see [README.md](README.md#how-it-works) and
+- **How it works**: see [README.md](../README.md#how-it-works) and
   [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md#architecture)

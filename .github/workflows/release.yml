@@ -128,7 +128,7 @@ jobs:
         run: |
           prev=$(git tag --merged HEAD -l 'v[0-9]*' --sort=-v:refname | head -n 1)
           {
-            echo "To deploy without building, see [Deploying from a Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/v${VERSION}/DEPLOYMENT.md#deploying-from-a-release)."
+            echo "To deploy without building, see [Deploying from a Release](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/blob/v${VERSION}/docs/DEPLOYMENT.md#deploying-from-a-release)."
             echo
             if [[ -n $prev ]]; then
               echo "## Changes since $prev"

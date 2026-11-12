@@ -30,8 +30,8 @@ resource "aws_ssm_parameter" "config" {
   ))
 
   # The config file only seeds the parameter; after that it is updated with
-  # the AWS CLI (see DEPLOYMENT.md), so later applies must not reset it from
-  # the file. The Lambdas only read it. To re-seed deliberately, run:
+  # the AWS CLI (see docs/DEPLOYMENT.md), so later applies must not reset it
+  # from the file. The Lambdas only read it. To re-seed deliberately, run:
   #   terraform apply -replace=aws_ssm_parameter.config
   lifecycle {
     ignore_changes = [value]
